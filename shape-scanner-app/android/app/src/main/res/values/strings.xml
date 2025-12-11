@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ShapeScanner</string>
+    <string name="title_activity_main">ShapeScanner</string>
+    <string name="package_name">com.shapescanner.app</string>
+    <string name="custom_url_scheme">com.shapescanner.app</string>
+</resources>
