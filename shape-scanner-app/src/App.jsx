@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 /**
  * MATH HELPERS
@@ -784,23 +786,41 @@ const ShapeScanner = () => {
     }
   }, [step, threshold, scanStep, curveSmoothing, processImage, segmentMode, showMask, invertResult, viewMode, smartRefine, shadowRemoval, noiseFilter]);
 
-  const downloadDXF = () => {
+  const downloadDXF = async () => {
     if (processedPath.length < 2) return;
     let dxf = "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nObjectLayer\n90\n" + processedPath.length + "\n70\n1\n";
     processedPath.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
     dxf += "0\nENDSEC\n0\nEOF";
-    const blob = new Blob([dxf], { type: 'application/dxf' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'scan_shape.dxf';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    const filename = `scan_shape_${Date.now()}.dxf`;
+    
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.requestPermissions();
+        const result = await Filesystem.writeFile({
+          path: filename,
+          data: dxf,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+        });
+        alert(`DXF saved to Documents folder:\n${filename}`);
+      } catch (error) {
+        console.error('Error saving DXF:', error);
+        alert('Error saving file. Please check storage permissions.');
+      }
+    } else {
+      const blob = new Blob([dxf], { type: 'application/dxf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   // --- NEW: Export Image for CAD ---
-  const downloadImage = () => {
-      // Create a temporary canvas at full resolution
+  const downloadImage = async () => {
       if (!sourcePixelData.current || !unwarpedBufferRef.current) return;
       const { width, height, data } = unwarpedBufferRef.current;
       const canvas = document.createElement('canvas');
@@ -808,18 +828,33 @@ const ShapeScanner = () => {
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       const imgData = ctx.createImageData(width, height);
-      // Copy raw unwarped RGB data to image
       for(let i=0; i<data.length; i++) imgData.data[i] = data[i];
       ctx.putImageData(imgData, 0, 0);
       
-      const link = document.createElement('a');
-      // Include physical dimensions in filename for CAD reference
-      const filename = `scan_w${paperWidth}mm_h${paperHeight}mm.png`;
-      link.download = filename;
-      link.href = canvas.toDataURL('image/png');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const filename = `scan_w${paperWidth}mm_h${paperHeight}mm_${Date.now()}.png`;
+      
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await Filesystem.requestPermissions();
+          const base64Data = canvas.toDataURL('image/png').split(',')[1];
+          await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: Directory.Documents,
+          });
+          alert(`Image saved to Documents folder:\n${filename}`);
+        } catch (error) {
+          console.error('Error saving image:', error);
+          alert('Error saving file. Please check storage permissions.');
+        }
+      } else {
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = canvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
   };
 
   // --- AI ANALYSIS ---
