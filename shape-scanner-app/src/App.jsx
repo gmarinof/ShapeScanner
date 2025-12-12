@@ -1252,7 +1252,7 @@ const ShapeScanner = () => {
                         )}
                         
                         {detectedShapeType && (
-                            <div className="absolute bottom-4 left-4 bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest z-30 flex items-center gap-1.5 border border-green-500">
+                            <div className="absolute top-4 left-4 bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest z-30 flex items-center gap-1.5 border border-green-500">
                                 <Check size={12} className="stroke-[3]" /> {detectedShapeType} Detected
                             </div>
                         )}
