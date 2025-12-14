@@ -104,13 +104,15 @@ class VectorUtils {
 }
 
 /**
- * CONTOUR TRACER - For multi-polygon detection with holes using Moore neighborhood tracing
+ * CONTOUR TRACER - For multi-polygon detection with holes using boundary tracing
  */
 class ContourTracer {
-  // Moore neighborhood directions: clockwise starting from right
-  static DIRS = [[1,0], [1,1], [0,1], [-1,1], [-1,0], [-1,-1], [0,-1], [1,-1]];
+  // 4-connectivity directions (N4): right, down, left, up
+  static DIRS4 = [[1,0], [0,1], [-1,0], [0,-1]];
+  // 8-connectivity directions (N8): clockwise starting from right
+  static DIRS8 = [[1,0], [1,1], [0,1], [-1,1], [-1,0], [-1,-1], [0,-1], [1,-1]];
 
-  // Connected components labeling using flood-fill
+  // Connected components labeling using flood-fill (4-connectivity)
   static labelComponents(mask, width, height) {
     const labels = new Int32Array(width * height);
     let currentLabel = 0;
@@ -136,6 +138,7 @@ class ContourTracer {
             if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
             if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
             
+            // 4-connectivity only
             queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
           }
           
@@ -148,12 +151,16 @@ class ContourTracer {
     return { labels, components };
   }
 
-  // Moore neighborhood boundary tracing - produces ordered, closed contour
-  static traceBoundary(mask, width, height, startX, startY, componentLabel, labels) {
+  // 4-connectivity boundary tracing - prevents diagonal leakage
+  static traceBoundary4(mask, width, height, startX, startY, componentLabel, labels) {
     const contour = [];
     const isInside = (x, y) => {
       if (x < 0 || x >= width || y < 0 || y >= height) return false;
-      return mask[y * width + x] === 1 && (componentLabel === null || labels[y * width + x] === componentLabel);
+      if (mask[y * width + x] !== 1) return false;
+      if (componentLabel !== null && labels !== null) {
+        return labels[y * width + x] === componentLabel;
+      }
+      return true;
     };
     
     if (!isInside(startX, startY)) return contour;
@@ -163,18 +170,18 @@ class ContourTracer {
     while (sx > 0 && isInside(sx - 1, sy)) sx--;
     
     let x = sx, y = sy;
-    let dir = 7; // Start looking from top-left
+    let dir = 3; // Start looking from up direction
     const maxIter = width * height * 2;
     let iter = 0;
     
     do {
       contour.push({ x, y });
-      // Search for next boundary pixel in Moore neighborhood
+      // Search for next boundary pixel in 4-neighborhood (counterclockwise from backtrack)
       let found = false;
-      for (let i = 0; i < 8; i++) {
-        const checkDir = (dir + 5 + i) % 8; // Start from dir+5 (backtrack direction + 1)
-        const nx = x + this.DIRS[checkDir][0];
-        const ny = y + this.DIRS[checkDir][1];
+      for (let i = 0; i < 4; i++) {
+        const checkDir = (dir + 3 + i) % 4; // Start from dir+3 (turn left from incoming)
+        const nx = x + this.DIRS4[checkDir][0];
+        const ny = y + this.DIRS4[checkDir][1];
         if (isInside(nx, ny)) {
           x = nx; y = ny;
           dir = checkDir;
@@ -189,7 +196,7 @@ class ContourTracer {
     return contour;
   }
 
-  // Find holes by detecting enclosed background regions within a component
+  // Find holes by detecting enclosed background regions - with proper component ownership check
   static findHoles(mask, labels, componentLabel, width, height, bbox) {
     const holes = [];
     const { minX, maxX, minY, maxY } = bbox;
@@ -209,10 +216,10 @@ class ContourTracer {
       if (mask[rightIdx] === 0 && visited[rightIdx] === 0) { externalQueue.push([width-1, y]); visited[rightIdx] = 2; }
     }
     
-    // Flood-fill external background
+    // Flood-fill external background (4-connectivity)
     while (externalQueue.length > 0) {
       const [cx, cy] = externalQueue.shift();
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      for (const [dx, dy] of this.DIRS4) {
         const nx = cx + dx, ny = cy + dy;
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
         const nidx = ny * width + nx;
@@ -228,8 +235,8 @@ class ContourTracer {
       for (let x = minX + 1; x < maxX; x++) {
         const idx = y * width + x;
         if (mask[idx] === 0 && visited[idx] === 0) {
-          // Check if surrounded by this component
           const holePixels = [];
+          const boundaryLabels = new Set();
           const queue = [[x, y]];
           let isEnclosed = true;
           
@@ -238,14 +245,33 @@ class ContourTracer {
             const cidx = cy * width + cx;
             if (cx < 0 || cx >= width || cy < 0 || cy >= height) { isEnclosed = false; continue; }
             if (visited[cidx] !== 0) { if (visited[cidx] === 2) isEnclosed = false; continue; }
-            if (mask[cidx] === 1) continue;
+            if (mask[cidx] === 1) continue; // Skip foreground pixels
             
             visited[cidx] = 1;
             holePixels.push({ x: cx, y: cy });
-            queue.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
+            
+            // Check all 4 neighbors and collect boundary labels from foreground neighbors
+            for (const [dx, dy] of this.DIRS4) {
+              const nx = cx + dx, ny = cy + dy;
+              if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+              const nidx = ny * width + nx;
+              if (mask[nidx] === 1) {
+                // This neighbor is foreground - record its component label
+                if (labels[nidx] !== 0) boundaryLabels.add(labels[nidx]);
+              } else if (visited[nidx] === 0) {
+                // This neighbor is background and unvisited - add to queue
+                queue.push([nx, ny]);
+              }
+            }
           }
           
-          if (isEnclosed && holePixels.length > 10) {
+          // Accept hole if enclosed AND either: 
+          // 1. Bordered exclusively by the target component, OR
+          // 2. Has no boundary labels but is enclosed (fully interior hole)
+          const isOwnedByComponent = boundaryLabels.size === 0 || 
+            (boundaryLabels.size === 1 && boundaryLabels.has(componentLabel));
+          
+          if (isEnclosed && isOwnedByComponent && holePixels.length > 10) {
             holes.push(holePixels);
           }
         }
@@ -264,6 +290,23 @@ class ContourTracer {
     return result;
   }
 
+  // Compute signed area to determine winding direction
+  static signedArea(points) {
+    let area = 0;
+    const n = points.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      area += points[i].x * points[j].y;
+      area -= points[j].x * points[i].y;
+    }
+    return area / 2;
+  }
+
+  // Reverse winding direction of a contour
+  static reverseContour(contour) {
+    return contour.slice().reverse();
+  }
+
   // Main function to detect all polygons with holes
   static detectPolygons(mask, width, height, paperWidth, paperHeight, scanStep = 2) {
     const { labels, components } = this.labelComponents(mask, width, height);
@@ -280,18 +323,23 @@ class ContourTracer {
         }
       }
       
-      // Trace outer boundary using Moore neighborhood
-      const boundary = this.traceBoundary(mask, width, height, startPixel.x, startPixel.y, component.label, labels);
+      // Trace outer boundary using 4-connectivity
+      const boundary = this.traceBoundary4(mask, width, height, startPixel.x, startPixel.y, component.label, labels);
       if (boundary.length < 5) continue;
       
       // Simplify the contour
       const simplified = this.simplifyContour(boundary, scanStep);
       
       // Convert to mm coordinates
-      const outerContour = simplified.map(p => ({
+      let outerContour = simplified.map(p => ({
         x: (p.x / width) * paperWidth,
         y: ((height - p.y) / height) * paperHeight
       }));
+      
+      // Ensure outer contour is counter-clockwise (positive area = CCW in CAD convention)
+      if (this.signedArea(outerContour) < 0) {
+        outerContour = this.reverseContour(outerContour);
+      }
       
       // Close the contour
       if (outerContour.length > 0) {
@@ -313,14 +361,20 @@ class ContourTracer {
         const holeMask = new Uint8Array(width * height);
         holePixels.forEach(p => { holeMask[p.y * width + p.x] = 1; });
         
-        const holeBoundary = this.traceBoundary(holeMask, width, height, startHole.x, startHole.y, null, null);
+        // Use 4-connectivity for hole tracing to prevent diagonal leakage
+        const holeBoundary = this.traceBoundary4(holeMask, width, height, startHole.x, startHole.y, null, null);
         if (holeBoundary.length < 5) continue;
         
         const holeSimplified = this.simplifyContour(holeBoundary, scanStep);
-        const holeContour = holeSimplified.map(p => ({
+        let holeContour = holeSimplified.map(p => ({
           x: (p.x / width) * paperWidth,
           y: ((height - p.y) / height) * paperHeight
         }));
+        
+        // Ensure hole contour is clockwise (negative area = CW = hole in CAD convention)
+        if (this.signedArea(holeContour) > 0) {
+          holeContour = this.reverseContour(holeContour);
+        }
         
         if (holeContour.length > 0) {
           holeContour.push({ ...holeContour[0] });
