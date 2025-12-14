@@ -52,3 +52,5 @@ git push github main
 - Camera capture using Capacitor Camera.getPhoto() for native platforms
 - Process view zoom/pan: scroll wheel to zoom, middle-click/Alt+drag to pan
 - Draggable detection badge (green shape count label)
+- Fixed DXF export to include proper unit headers ($INSUNITS=4 for mm)
+- Added SVG export option with proper mm dimensions

@@ -1276,7 +1276,7 @@ const ShapeScanner = () => {
   }, [step, threshold, scanStep, curveSmoothing, processImage, segmentMode, showMask, invertResult, viewMode, smartRefine, shadowRemoval, noiseFilter]);
 
   const openSaveDialog = (type) => {
-    const defaultName = type === 'dxf' ? 'scan_shape' : `scan_w${paperWidth}mm_h${paperHeight}mm`;
+    const defaultName = (type === 'dxf' || type === 'svg') ? 'scan_shape' : `scan_w${paperWidth}mm_h${paperHeight}mm`;
     setSaveFileName(defaultName);
     setSaveType(type);
     setShowSaveDialog(true);
@@ -1287,6 +1287,8 @@ const ShapeScanner = () => {
     setShowSaveDialog(false);
     if (saveType === 'dxf') {
       await performDXFSave(cleanName);
+    } else if (saveType === 'svg') {
+      await performSVGSave(cleanName);
     } else {
       await performImageSave(cleanName);
     }
@@ -1357,6 +1359,71 @@ const ShapeScanner = () => {
       }
     } else {
       const blob = new Blob([dxf], { type: 'application/dxf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  // --- SVG Export ---
+  const performSVGSave = async (baseName) => {
+    if (detectedPolygons.length === 0 && processedPath.length < 2) return;
+    
+    // SVG with proper dimensions in mm
+    let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    svg += `<svg xmlns="http://www.w3.org/2000/svg" width="${paperWidth}mm" height="${paperHeight}mm" viewBox="0 0 ${paperWidth} ${paperHeight}">\n`;
+    svg += `  <title>ShapeScanner Export - ${paperWidth}mm x ${paperHeight}mm</title>\n`;
+    svg += `  <desc>Exported from ShapeScanner. All dimensions in millimeters.</desc>\n`;
+    
+    if (detectedPolygons.length > 0) {
+      detectedPolygons.forEach((poly, polyIdx) => {
+        // Outer contour
+        if (poly.outer.length >= 2) {
+          const pathData = poly.outer.map((p, i) => 
+            `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
+          ).join(' ') + ' Z';
+          svg += `  <path id="shape_${polyIdx + 1}_outer" d="${pathData}" fill="none" stroke="#000000" stroke-width="0.1"/>\n`;
+        }
+        // Holes
+        poly.holes.forEach((hole, holeIdx) => {
+          if (hole.length >= 2) {
+            const holeData = hole.map((p, i) => 
+              `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
+            ).join(' ') + ' Z';
+            svg += `  <path id="shape_${polyIdx + 1}_hole_${holeIdx + 1}" d="${holeData}" fill="none" stroke="#666666" stroke-width="0.1"/>\n`;
+          }
+        });
+      });
+    } else if (processedPath.length >= 2) {
+      const pathData = processedPath.map((p, i) => 
+        `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
+      ).join(' ') + ' Z';
+      svg += `  <path id="shape" d="${pathData}" fill="none" stroke="#000000" stroke-width="0.1"/>\n`;
+    }
+    
+    svg += `</svg>`;
+    
+    const filename = `${baseName}.svg`;
+    
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.requestPermissions();
+        await Filesystem.writeFile({
+          path: filename,
+          data: svg,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+        });
+        alert(`SVG saved to Documents folder:\n${filename}`);
+      } catch (error) {
+        console.error('Error saving SVG:', error);
+        alert('Error saving file. Please check storage permissions.');
+      }
+    } else {
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
@@ -1477,7 +1544,7 @@ const ShapeScanner = () => {
       {showSaveDialog && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-neutral-900 rounded-2xl border border-neutral-700 p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-white font-bold text-lg mb-4">Save {saveType === 'dxf' ? 'DXF Vector' : 'Image'}</h3>
+            <h3 className="text-white font-bold text-lg mb-4">Save {saveType === 'dxf' ? 'DXF Vector' : saveType === 'svg' ? 'SVG Vector' : 'Image'}</h3>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-neutral-400 uppercase font-bold block mb-2">File Name</label>
@@ -1490,7 +1557,7 @@ const ShapeScanner = () => {
                     className="flex-1 bg-black border border-neutral-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
                     autoFocus
                   />
-                  <span className="text-neutral-500 font-mono text-sm">.{saveType === 'dxf' ? 'dxf' : 'png'}</span>
+                  <span className="text-neutral-500 font-mono text-sm">.{saveType === 'dxf' ? 'dxf' : saveType === 'svg' ? 'svg' : 'png'}</span>
                 </div>
               </div>
             </div>
@@ -2018,12 +2085,15 @@ const ShapeScanner = () => {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 mt-2 pb-6">
-                            <button onClick={() => openSaveDialog('image')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98]">
-                                <ImageIcon size={16} /> Save Image
+                        <div className="flex gap-2 mt-2 pb-6">
+                            <button onClick={() => openSaveDialog('image')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
+                                <ImageIcon size={14} /> PNG
                             </button>
-                            <button onClick={() => openSaveDialog('dxf')} disabled={processedPath.length < 3} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
-                                <Download size={16} /> Save Vector DXF
+                            <button onClick={() => openSaveDialog('svg')} disabled={processedPath.length < 3} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
+                                <FileText size={14} /> SVG
+                            </button>
+                            <button onClick={() => openSaveDialog('dxf')} disabled={processedPath.length < 3} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
+                                <Download size={14} /> DXF
                             </button>
                         </div>
                     </>
