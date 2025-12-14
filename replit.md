@@ -24,8 +24,10 @@ shape-scanner-app/
 - Photo capture/upload with perspective correction
 - Automatic paper corner detection (Otsu thresholding)
 - Multi-polygon detection with hole support
+- Per-polygon settings (each shape can have independent slider settings)
 - Shape fitting (circles, polygons)
 - DXF export for CAD software
+- SVG export with mm dimensions
 - AI analysis with Gemini Vision (optional)
 
 ## Running the App
@@ -54,3 +56,9 @@ git push github main
 - Draggable detection badge (green shape count label)
 - Fixed DXF export to include proper unit headers ($INSUNITS=4 for mm)
 - Added SVG export option with proper mm dimensions
+- **Per-polygon settings**: Each detected shape now has independent settings
+  - Settings include: threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult
+  - Green indicator bar shows which shape's settings are being edited
+  - Reset button to restore shape to default settings
+  - Settings are preserved when switching between shapes
+  - Curve smoothing and smart refine are applied per-polygon using raw contour data
