@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 /**
@@ -565,6 +566,16 @@ const ShapeScanner = () => {
   const [detectedPolygons, setDetectedPolygons] = useState([]);
   const [selectedPolygonIndex, setSelectedPolygonIndex] = useState(0);
   
+  // Process view zoom/pan state
+  const [processView, setProcessView] = useState({ x: 0, y: 0, scale: 1 });
+  const [isProcessPanning, setIsProcessPanning] = useState(false);
+  const [lastProcessPos, setLastProcessPos] = useState({ x: 0, y: 0 });
+  
+  // Draggable badge state
+  const [badgePosition, setBadgePosition] = useState({ x: null, y: 16 }); // null x means right-aligned
+  const [isDraggingBadge, setIsDraggingBadge] = useState(false);
+  const [badgeDragOffset, setBadgeDragOffset] = useState({ x: 0, y: 0 });
+  
   // AI
   const [aiResult, setAiResult] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -638,6 +649,62 @@ const ShapeScanner = () => {
         img.src = evt.target.result;
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Camera capture handler for native platforms
+  const handleCameraCapture = async () => {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera
+      });
+      
+      if (photo.dataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1500;
+          let w = img.width; let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            const scale = Math.min(maxDim / w, maxDim / h);
+            w = Math.floor(w * scale); h = Math.floor(h * scale);
+          }
+          
+          setCorners([
+            { x: w * 0.2, y: h * 0.2 }, { x: w * 0.8, y: h * 0.2 },
+            { x: w * 0.8, y: h * 0.8 }, { x: w * 0.2, y: h * 0.8 },
+          ]);
+          setImgDims({ w, h });
+          setImageSrc(photo.dataUrl);
+          
+          // Reset
+          setCalMonochrome(false); setCalContrast(100);
+          setSegmentMode('auto'); setInvertResult(false);
+          setProcessedPath([]); setObjectDims(null);
+          setViewMode('original');
+          setAiResult(null); setShowAiPanel(false);
+          setDetectedPolygons([]); setSelectedPolygonIndex(0);
+          
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = w; tempCanvas.height = h;
+          const ctx = tempCanvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          sourcePixelData.current = ctx.getImageData(0, 0, w, h).data;
+          
+          setStep('calibrate');
+        };
+        img.src = photo.dataUrl;
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      // Fallback to file input with capture attribute
+      if (fileInputRef.current) {
+        fileInputRef.current.setAttribute('capture', 'environment');
+        fileInputRef.current.click();
+        fileInputRef.current.removeAttribute('capture');
+      }
     }
   };
 
@@ -883,6 +950,88 @@ const ShapeScanner = () => {
     setDragStart(null); setSelectionBox(null);
   };
 
+  // --- PROCESS VIEW ZOOM/PAN HANDLERS ---
+  const handleProcessViewWheel = (e) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setProcessView(v => ({
+      scale: Math.max(0.5, Math.min(5, v.scale * delta)),
+      x: x - (x - v.x) * delta,
+      y: y - (y - v.y) * delta
+    }));
+  };
+
+  const handleProcessPanStart = (e) => {
+    setIsProcessPanning(true);
+    setLastProcessPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleProcessPanMove = (e) => {
+    if (!isProcessPanning) return;
+    setProcessView(v => ({
+      ...v,
+      x: v.x + e.clientX - lastProcessPos.x,
+      y: v.y + e.clientY - lastProcessPos.y
+    }));
+    setLastProcessPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleProcessPanEnd = () => {
+    setIsProcessPanning(false);
+  };
+
+  const resetProcessView = () => {
+    setProcessView({ x: 0, y: 0, scale: 1 });
+  };
+
+  // --- DRAGGABLE BADGE HANDLERS ---
+  const handleBadgeDragStart = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    setBadgeDragOffset({ 
+      x: clientX - rect.left, 
+      y: clientY - rect.top 
+    });
+    setIsDraggingBadge(true);
+  };
+
+  const handleBadgeDragMove = useCallback((e) => {
+    if (!isDraggingBadge) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    setBadgePosition({
+      x: clientX - badgeDragOffset.x,
+      y: clientY - badgeDragOffset.y
+    });
+  }, [isDraggingBadge, badgeDragOffset]);
+
+  const handleBadgeDragEnd = useCallback(() => {
+    setIsDraggingBadge(false);
+  }, []);
+
+  // Global mouse/touch move and up listeners for badge dragging
+  useEffect(() => {
+    if (isDraggingBadge) {
+      const handleMove = (e) => handleBadgeDragMove(e);
+      const handleEnd = () => handleBadgeDragEnd();
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleMove);
+      window.addEventListener('touchend', handleEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleEnd);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('touchend', handleEnd);
+      };
+    }
+  }, [isDraggingBadge, handleBadgeDragMove, handleBadgeDragEnd]);
 
   // --- MAIN PROCESS LOGIC ---
   const processImage = useCallback(() => {
@@ -1380,8 +1529,8 @@ const ShapeScanner = () => {
                 <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all p-6 rounded-2xl shadow-lg group">
                     <Upload size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Upload</span>
                 </button>
-                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-neutral-800 hover:bg-neutral-700 active:scale-95 transition-all p-6 rounded-2xl border border-neutral-700 group">
-                    <Camera size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Camera</span>
+                <button onClick={handleCameraCapture} className="flex flex-col items-center justify-center bg-neutral-800 hover:bg-neutral-700 active:scale-95 transition-all p-6 rounded-2xl border border-neutral-700 group">
+                    <CameraIcon size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Camera</span>
                 </button>
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
@@ -1572,16 +1721,21 @@ const ShapeScanner = () => {
                 </div>
                 
                 {/* Main Canvas Area - Centered and Scaled */}
-                <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden p-2">
+                <div 
+                    className="flex-1 w-full relative flex items-center justify-center overflow-hidden p-2"
+                    onWheel={handleProcessViewWheel}
+                >
                     <div 
-                        className={`relative border border-neutral-800 shadow-2xl transition-colors duration-300 ${isPicking ? 'cursor-crosshair ring-2 ring-amber-500/50' : ''}`}
+                        className={`relative border border-neutral-800 shadow-2xl transition-colors duration-300 ${isPicking ? 'cursor-crosshair ring-2 ring-amber-500/50' : ''} ${isProcessPanning ? 'cursor-grabbing' : ''}`}
                         style={{
                             aspectRatio: `${paperWidth}/${paperHeight}`,
                             maxHeight: '100%',
                             maxWidth: '100%',
                             backgroundColor: viewMode === 'contour' ? 'white' : '#111', 
                             backgroundImage: viewMode === 'contour' ? 'none' : 'radial-gradient(#333 1px, transparent 1px)',
-                            backgroundSize: '20px 20px'
+                            backgroundSize: '20px 20px',
+                            transform: `translate(${processView.x}px, ${processView.y}px) scale(${processView.scale})`,
+                            transformOrigin: 'center center'
                         }}
                     >
                         {!sourcePixelData.current && (
@@ -1593,10 +1747,29 @@ const ShapeScanner = () => {
                         )}
                         <canvas 
                             ref={processCanvasRef} 
-                            className="w-full h-full object-contain touch-none relative z-10"
-                            onMouseDown={handleProcessStart}
-                            onMouseMove={handleProcessMove}
-                            onMouseUp={handleProcessEnd}
+                            className={`w-full h-full object-contain touch-none relative z-10 ${isProcessPanning ? 'cursor-grabbing' : ''}`}
+                            onMouseDown={(e) => {
+                                if (e.button === 1 || e.altKey) {
+                                    e.preventDefault();
+                                    handleProcessPanStart(e);
+                                } else {
+                                    handleProcessStart(e);
+                                }
+                            }}
+                            onMouseMove={(e) => {
+                                if (isProcessPanning) {
+                                    handleProcessPanMove(e);
+                                } else {
+                                    handleProcessMove(e);
+                                }
+                            }}
+                            onMouseUp={() => {
+                                if (isProcessPanning) {
+                                    handleProcessPanEnd();
+                                } else {
+                                    handleProcessEnd();
+                                }
+                            }}
                             onTouchStart={(e) => { const t = e.touches[0]; handleProcessStart({ clientX: t.clientX, clientY: t.clientY }); }}
                             onTouchMove={(e) => { const t = e.touches[0]; handleProcessMove({ clientX: t.clientX, clientY: t.clientY }); }}
                             onTouchEnd={handleProcessEnd}
@@ -1702,8 +1875,18 @@ const ShapeScanner = () => {
                         )}
                         
                         {detectedPolygons.length > 0 && (
-                            <div className="absolute top-4 left-4 flex flex-col gap-2 z-30">
+                            <div 
+                                className="fixed flex flex-col gap-2 z-[100] cursor-grab active:cursor-grabbing select-none touch-none"
+                                style={{
+                                    left: badgePosition.x !== null ? `${badgePosition.x}px` : 'auto',
+                                    right: badgePosition.x === null ? '16px' : 'auto',
+                                    top: `${badgePosition.y}px`,
+                                }}
+                                onMouseDown={handleBadgeDragStart}
+                                onTouchStart={handleBadgeDragStart}
+                            >
                                 <div className="bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 border border-green-500">
+                                    <Move size={10} className="opacity-60 mr-1" />
                                     <Check size={12} className="stroke-[3]" /> 
                                     {detectedPolygons.length} Shape{detectedPolygons.length > 1 ? 's' : ''} 
                                     {detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0) > 0 && (
@@ -1717,7 +1900,7 @@ const ShapeScanner = () => {
                                         {detectedPolygons.map((_, idx) => (
                                             <button 
                                                 key={idx}
-                                                onClick={() => setSelectedPolygonIndex(idx)}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedPolygonIndex(idx); }}
                                                 className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
                                                     idx === selectedPolygonIndex 
                                                         ? 'bg-emerald-500 text-white shadow-lg' 
@@ -1729,6 +1912,26 @@ const ShapeScanner = () => {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        
+                        {/* Zoom controls for process view */}
+                        {processView.scale !== 1 && (
+                            <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+                                <button 
+                                    onClick={resetProcessView}
+                                    className="w-8 h-8 rounded-full bg-neutral-800/90 border border-neutral-700 flex items-center justify-center text-white hover:bg-neutral-700 transition-colors"
+                                    title="Reset zoom"
+                                >
+                                    <Maximize2 size={14} />
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Zoom level indicator */}
+                        {processView.scale !== 1 && (
+                            <div className="absolute bottom-4 left-4 z-50 bg-neutral-800/90 border border-neutral-700 rounded-full px-2 py-1 text-[10px] text-neutral-300 font-bold">
+                                {Math.round(processView.scale * 100)}%
                             </div>
                         )}
                     </div>
