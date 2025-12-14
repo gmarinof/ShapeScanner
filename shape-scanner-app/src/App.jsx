@@ -365,6 +365,16 @@ const ShapeScanner = () => {
 
   useEffect(() => { if (step === 'calibrate') setTimeout(fitToScreen, 100); }, [step, fitToScreen]);
 
+  const zoomToCorner = useCallback((cornerIndex) => {
+    if (!canvasRef.current || cornerIndex === null) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const corner = corners[cornerIndex];
+    const zoomScale = 3;
+    const newX = rect.width / 2 - corner.x * zoomScale;
+    const newY = rect.height / 2 - corner.y * zoomScale;
+    setView({ x: newX, y: newY, scale: zoomScale });
+  }, [corners]);
+
   const handleStart = (clientX, clientY) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const sx = clientX - rect.left; const sy = clientY - rect.top;
@@ -375,7 +385,10 @@ const ShapeScanner = () => {
       const d = Math.sqrt((c.x - p.x)**2 + (c.y - p.y)**2);
       if (d < hitRadius && d < minD) { minD = d; closest = i; }
     });
-    if (closest !== -1) setActiveCorner(closest);
+    if (closest !== -1) {
+      setActiveCorner(closest);
+      zoomToCorner(closest);
+    }
     else { setIsPanning(true); setLastMousePos({ x: clientX, y: clientY }); }
   };
 
