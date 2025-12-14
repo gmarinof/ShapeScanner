@@ -1295,7 +1295,24 @@ const ShapeScanner = () => {
   const performDXFSave = async (baseName) => {
     if (detectedPolygons.length === 0 && processedPath.length < 2) return;
     
-    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    // DXF Header with units set to millimeters ($INSUNITS = 4)
+    let dxf = "0\nSECTION\n2\nHEADER\n";
+    dxf += "9\n$ACADVER\n1\nAC1014\n"; // AutoCAD R14 format
+    dxf += "9\n$INSUNITS\n70\n4\n"; // 4 = Millimeters
+    dxf += "9\n$MEASUREMENT\n70\n1\n"; // 1 = Metric
+    dxf += "9\n$LUNITS\n70\n2\n"; // 2 = Decimal
+    dxf += "9\n$LUPREC\n70\n3\n"; // 3 decimal places
+    dxf += "0\nENDSEC\n";
+    
+    // Tables section (required by some CAD programs)
+    dxf += "0\nSECTION\n2\nTABLES\n";
+    dxf += "0\nTABLE\n2\nLAYER\n70\n1\n";
+    dxf += "0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n";
+    dxf += "0\nENDTAB\n";
+    dxf += "0\nENDSEC\n";
+    
+    // Entities section
+    dxf += "0\nSECTION\n2\nENTITIES\n";
     
     // Export all detected polygons with their holes
     if (detectedPolygons.length > 0) {
