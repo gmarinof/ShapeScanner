@@ -104,6 +104,248 @@ class VectorUtils {
 }
 
 /**
+ * CONTOUR TRACER - For multi-polygon detection with holes using Moore neighborhood tracing
+ */
+class ContourTracer {
+  // Moore neighborhood directions: clockwise starting from right
+  static DIRS = [[1,0], [1,1], [0,1], [-1,1], [-1,0], [-1,-1], [0,-1], [1,-1]];
+
+  // Connected components labeling using flood-fill
+  static labelComponents(mask, width, height) {
+    const labels = new Int32Array(width * height);
+    let currentLabel = 0;
+    const components = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        if (mask[idx] === 1 && labels[idx] === 0) {
+          currentLabel++;
+          const pixels = [];
+          const queue = [[x, y]];
+          let minX = x, maxX = x, minY = y, maxY = y;
+          
+          while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            const cidx = cy * width + cx;
+            if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
+            if (mask[cidx] !== 1 || labels[cidx] !== 0) continue;
+            
+            labels[cidx] = currentLabel;
+            pixels.push({ x: cx, y: cy });
+            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+            
+            queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+          }
+          
+          if (pixels.length > 20) {
+            components.push({ label: currentLabel, pixels, size: pixels.length, bbox: {minX, maxX, minY, maxY} });
+          }
+        }
+      }
+    }
+    return { labels, components };
+  }
+
+  // Moore neighborhood boundary tracing - produces ordered, closed contour
+  static traceBoundary(mask, width, height, startX, startY, componentLabel, labels) {
+    const contour = [];
+    const isInside = (x, y) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return false;
+      return mask[y * width + x] === 1 && (componentLabel === null || labels[y * width + x] === componentLabel);
+    };
+    
+    if (!isInside(startX, startY)) return contour;
+    
+    // Find first boundary pixel (leftmost on starting row)
+    let sx = startX, sy = startY;
+    while (sx > 0 && isInside(sx - 1, sy)) sx--;
+    
+    let x = sx, y = sy;
+    let dir = 7; // Start looking from top-left
+    const maxIter = width * height * 2;
+    let iter = 0;
+    
+    do {
+      contour.push({ x, y });
+      // Search for next boundary pixel in Moore neighborhood
+      let found = false;
+      for (let i = 0; i < 8; i++) {
+        const checkDir = (dir + 5 + i) % 8; // Start from dir+5 (backtrack direction + 1)
+        const nx = x + this.DIRS[checkDir][0];
+        const ny = y + this.DIRS[checkDir][1];
+        if (isInside(nx, ny)) {
+          x = nx; y = ny;
+          dir = checkDir;
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+      iter++;
+    } while ((x !== sx || y !== sy) && iter < maxIter);
+    
+    return contour;
+  }
+
+  // Find holes by detecting enclosed background regions within a component
+  static findHoles(mask, labels, componentLabel, width, height, bbox) {
+    const holes = [];
+    const { minX, maxX, minY, maxY } = bbox;
+    const visited = new Uint8Array(width * height);
+    
+    // Mark all background connected to image border as external
+    const externalQueue = [];
+    for (let x = 0; x < width; x++) {
+      if (mask[x] === 0 && visited[x] === 0) { externalQueue.push([x, 0]); visited[x] = 2; }
+      const bottomIdx = (height-1) * width + x;
+      if (mask[bottomIdx] === 0 && visited[bottomIdx] === 0) { externalQueue.push([x, height-1]); visited[bottomIdx] = 2; }
+    }
+    for (let y = 0; y < height; y++) {
+      const leftIdx = y * width;
+      const rightIdx = y * width + width - 1;
+      if (mask[leftIdx] === 0 && visited[leftIdx] === 0) { externalQueue.push([0, y]); visited[leftIdx] = 2; }
+      if (mask[rightIdx] === 0 && visited[rightIdx] === 0) { externalQueue.push([width-1, y]); visited[rightIdx] = 2; }
+    }
+    
+    // Flood-fill external background
+    while (externalQueue.length > 0) {
+      const [cx, cy] = externalQueue.shift();
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const nidx = ny * width + nx;
+        if (mask[nidx] === 0 && visited[nidx] === 0) {
+          visited[nidx] = 2;
+          externalQueue.push([nx, ny]);
+        }
+      }
+    }
+    
+    // Find internal background regions (holes) within component bounding box
+    for (let y = minY + 1; y < maxY; y++) {
+      for (let x = minX + 1; x < maxX; x++) {
+        const idx = y * width + x;
+        if (mask[idx] === 0 && visited[idx] === 0) {
+          // Check if surrounded by this component
+          const holePixels = [];
+          const queue = [[x, y]];
+          let isEnclosed = true;
+          
+          while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            const cidx = cy * width + cx;
+            if (cx < 0 || cx >= width || cy < 0 || cy >= height) { isEnclosed = false; continue; }
+            if (visited[cidx] !== 0) { if (visited[cidx] === 2) isEnclosed = false; continue; }
+            if (mask[cidx] === 1) continue;
+            
+            visited[cidx] = 1;
+            holePixels.push({ x: cx, y: cy });
+            queue.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
+          }
+          
+          if (isEnclosed && holePixels.length > 10) {
+            holes.push(holePixels);
+          }
+        }
+      }
+    }
+    return holes;
+  }
+
+  // Simplify contour by sampling points at intervals
+  static simplifyContour(contour, step = 2) {
+    if (contour.length < 10) return contour;
+    const result = [];
+    for (let i = 0; i < contour.length; i += step) {
+      result.push(contour[i]);
+    }
+    return result;
+  }
+
+  // Main function to detect all polygons with holes
+  static detectPolygons(mask, width, height, paperWidth, paperHeight, scanStep = 2) {
+    const { labels, components } = this.labelComponents(mask, width, height);
+    const polygons = [];
+
+    components.sort((a, b) => b.size - a.size);
+
+    for (const component of components) {
+      // Find starting point (topmost, then leftmost pixel)
+      let startPixel = component.pixels[0];
+      for (const p of component.pixels) {
+        if (p.y < startPixel.y || (p.y === startPixel.y && p.x < startPixel.x)) {
+          startPixel = p;
+        }
+      }
+      
+      // Trace outer boundary using Moore neighborhood
+      const boundary = this.traceBoundary(mask, width, height, startPixel.x, startPixel.y, component.label, labels);
+      if (boundary.length < 5) continue;
+      
+      // Simplify the contour
+      const simplified = this.simplifyContour(boundary, scanStep);
+      
+      // Convert to mm coordinates
+      const outerContour = simplified.map(p => ({
+        x: (p.x / width) * paperWidth,
+        y: ((height - p.y) / height) * paperHeight
+      }));
+      
+      // Close the contour
+      if (outerContour.length > 0) {
+        outerContour.push({ ...outerContour[0] });
+      }
+
+      // Find and trace holes
+      const holes = this.findHoles(mask, labels, component.label, width, height, component.bbox);
+      const holeContours = [];
+
+      for (const holePixels of holes) {
+        if (holePixels.length < 5) continue;
+        let startHole = holePixels[0];
+        for (const p of holePixels) {
+          if (p.y < startHole.y || (p.y === startHole.y && p.x < startHole.x)) startHole = p;
+        }
+        
+        // Create temporary mask for hole tracing
+        const holeMask = new Uint8Array(width * height);
+        holePixels.forEach(p => { holeMask[p.y * width + p.x] = 1; });
+        
+        const holeBoundary = this.traceBoundary(holeMask, width, height, startHole.x, startHole.y, null, null);
+        if (holeBoundary.length < 5) continue;
+        
+        const holeSimplified = this.simplifyContour(holeBoundary, scanStep);
+        const holeContour = holeSimplified.map(p => ({
+          x: (p.x / width) * paperWidth,
+          y: ((height - p.y) / height) * paperHeight
+        }));
+        
+        if (holeContour.length > 0) {
+          holeContour.push({ ...holeContour[0] });
+          holeContours.push(holeContour);
+        }
+      }
+
+      polygons.push({
+        outer: outerContour,
+        holes: holeContours,
+        bbox: {
+          minX: (component.bbox.minX / width) * paperWidth,
+          maxX: (component.bbox.maxX / width) * paperWidth,
+          minY: ((height - component.bbox.maxY) / height) * paperHeight,
+          maxY: ((height - component.bbox.minY) / height) * paperHeight
+        },
+        size: component.size
+      });
+    }
+
+    return polygons;
+  }
+}
+
+/**
  * SHAPE FITTER
  */
 class ShapeFitter {
@@ -265,6 +507,10 @@ const ShapeScanner = () => {
   const [viewMode, setViewMode] = useState('original'); 
   const [detectedShapeType, setDetectedShapeType] = useState(null);
   
+  // Multi-polygon state
+  const [detectedPolygons, setDetectedPolygons] = useState([]);
+  const [selectedPolygonIndex, setSelectedPolygonIndex] = useState(0);
+  
   // AI
   const [aiResult, setAiResult] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -325,6 +571,7 @@ const ShapeScanner = () => {
           setProcessedPath([]); setObjectDims(null);
           setViewMode('original'); 
           setAiResult(null); setShowAiPanel(false);
+          setDetectedPolygons([]); setSelectedPolygonIndex(0);
           
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = w; tempCanvas.height = h;
@@ -738,58 +985,73 @@ const ShapeScanner = () => {
     
     unwarpedBufferRef.current = { width: targetW, height: targetH, data: rawBuffer };
 
-    // Calculate Bounds
+    // Multi-polygon detection with holes
     if (viewMode !== 'original') {
-        const isObjectPixel = (x, y) => mask[y * targetW + x] === 1;
-
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (let y = 1; y < targetH - 1; y++) {
-          for (let x = 1; x < targetW - 1; x++) {
-            if (isObjectPixel(x, y)) {
-               const isEdge = !isObjectPixel(x+1, y) || !isObjectPixel(x-1, y) || !isObjectPixel(x, y+1) || !isObjectPixel(x, y-1);
-               if (isEdge) {
-                   if (x % scanStep === 0 && y % scanStep === 0) {
-                     const mmX = (x / targetW) * paperWidth;
-                     const mmY = ((targetH - y) / targetH) * paperHeight;
-                     points.push({ x: mmX, y: mmY });
-                     if(mmX < minX) minX = mmX; if(mmX > maxX) maxX = mmX;
-                     if(mmY < minY) minY = mmY; if(mmY > maxY) maxY = mmY;
-                   }
-               }
+        // Use ContourTracer to detect all polygons with holes
+        const polygons = ContourTracer.detectPolygons(mask, targetW, targetH, paperWidth, paperHeight, scanStep);
+        
+        // Process and refine each polygon
+        const refinedPolygons = polygons.map(poly => {
+          let outerPoints = poly.outer;
+          let detected = 'poly';
+          
+          if (smartRefine && outerPoints.length > 0) {
+            const circleFit = ShapeFitter.fitCircle(outerPoints);
+            if (circleFit) {
+              outerPoints = ShapeFitter.generateCircle(circleFit.cx, circleFit.cy, circleFit.r);
+              detected = 'circle';
+              poly.bbox.minX = circleFit.cx - circleFit.r;
+              poly.bbox.maxX = circleFit.cx + circleFit.r;
+              poly.bbox.minY = circleFit.cy - circleFit.r;
+              poly.bbox.maxY = circleFit.cy + circleFit.r;
+            } else {
+              outerPoints = VectorUtils.simplify(outerPoints, 0.5);
+              outerPoints = VectorUtils.smooth(outerPoints, curveSmoothing);
             }
           }
-        }
-
-        if(points.length > 0) {
-            points.sort((a, b) => Math.atan2(a.y - ((minY+maxY)/2), a.x - ((minX+maxX)/2)) - Math.atan2(b.y - ((minY+maxY)/2), b.x - ((minX+maxX)/2)));
-            
-            let finalPoints = points;
-            let detected = null;
-
+          
+          // Refine holes as well
+          const refinedHoles = poly.holes.map(hole => {
+            let holePoints = hole;
             if (smartRefine) {
-                const circleFit = ShapeFitter.fitCircle(points);
-                if (circleFit) {
-                    finalPoints = ShapeFitter.generateCircle(circleFit.cx, circleFit.cy, circleFit.r);
-                    detected = 'circle';
-                    minX = circleFit.cx - circleFit.r; maxX = circleFit.cx + circleFit.r;
-                    minY = circleFit.cy - circleFit.r; maxY = circleFit.cy + circleFit.r;
-                } else {
-                    finalPoints = VectorUtils.simplify(finalPoints, 0.5); 
-                    finalPoints = VectorUtils.smooth(finalPoints, curveSmoothing);
-                    detected = 'poly';
-                }
-            } else {
-                finalPoints.push(finalPoints[0]); 
+              const holeFit = ShapeFitter.fitCircle(hole);
+              if (holeFit) {
+                holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
+              } else {
+                holePoints = VectorUtils.simplify(holePoints, 0.5);
+                holePoints = VectorUtils.smooth(holePoints, curveSmoothing);
+              }
             }
-
-            setDetectedShapeType(detected);
-            setObjectDims({ width: (maxX - minX), height: (maxY - minY), minX, maxX, minY, maxY });
-            setProcessedPath(finalPoints);
+            return holePoints;
+          });
+          
+          return {
+            outer: outerPoints,
+            holes: refinedHoles,
+            bbox: poly.bbox,
+            type: detected
+          };
+        });
+        
+        setDetectedPolygons(refinedPolygons);
+        
+        // For backwards compatibility, also set the primary polygon
+        if (refinedPolygons.length > 0) {
+          const primary = refinedPolygons[selectedPolygonIndex] || refinedPolygons[0];
+          setProcessedPath(primary.outer);
+          setObjectDims({ 
+            width: primary.bbox.maxX - primary.bbox.minX, 
+            height: primary.bbox.maxY - primary.bbox.minY, 
+            ...primary.bbox 
+          });
+          setDetectedShapeType(primary.type);
         } else {
-            setObjectDims(null); setProcessedPath([]); setDetectedShapeType(null);
+          setProcessedPath([]); setObjectDims(null); setDetectedShapeType(null);
+          setDetectedPolygons([]);
         }
     } else {
         setProcessedPath([]); setObjectDims(null); setDetectedShapeType(null);
+        setDetectedPolygons([]);
     }
 
     const endTime = performance.now();
@@ -801,7 +1063,7 @@ const ShapeScanner = () => {
     
     setIsProcessing(false);
 
-  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter]);
+  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, selectedPolygonIndex]);
 
   useEffect(() => {
     if (step === 'process') {
@@ -828,9 +1090,33 @@ const ShapeScanner = () => {
   };
 
   const performDXFSave = async (baseName) => {
-    if (processedPath.length < 2) return;
-    let dxf = "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nObjectLayer\n90\n" + processedPath.length + "\n70\n1\n";
-    processedPath.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
+    if (detectedPolygons.length === 0 && processedPath.length < 2) return;
+    
+    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    
+    // Export all detected polygons with their holes
+    if (detectedPolygons.length > 0) {
+      detectedPolygons.forEach((poly, polyIdx) => {
+        // Export outer contour
+        if (poly.outer.length >= 2) {
+          dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Outer\n90\n" + poly.outer.length + "\n70\n1\n";
+          poly.outer.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
+        }
+        
+        // Export holes
+        poly.holes.forEach((hole, holeIdx) => {
+          if (hole.length >= 2) {
+            dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Hole_" + (holeIdx + 1) + "\n90\n" + hole.length + "\n70\n1\n";
+            hole.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
+          }
+        });
+      });
+    } else if (processedPath.length >= 2) {
+      // Fallback to single path
+      dxf += "0\nLWPOLYLINE\n8\nObjectLayer\n90\n" + processedPath.length + "\n70\n1\n";
+      processedPath.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
+    }
+    
     dxf += "0\nENDSEC\n0\nEOF";
     
     const filename = `${baseName}.dxf`;
@@ -1016,7 +1302,7 @@ const ShapeScanner = () => {
                 <p>Mapped: {debugStats.mappedPixels} px</p>
                 <p>Time: {debugStats.processingTime}ms</p>
                 <p>Mode: {viewMode}</p>
-                <p>Shape: {detectedShapeType || 'None'}</p>
+                <p>Shapes: {detectedPolygons.length} | Holes: {detectedPolygons.reduce((a,p)=>a+p.holes.length,0)}</p>
             </div>
         )}
 
@@ -1264,63 +1550,93 @@ const ShapeScanner = () => {
                         
                         {(viewMode === 'processed' || viewMode === 'contour') && (
                             <svg className="absolute top-0 left-0 w-full h-full pointer-events-none z-20" viewBox={`0 0 100 100`} preserveAspectRatio="none">
-                                {processedPath.length > 0 && (
-                                    <>
-                                        <path 
-                                            d={`M ${processedPath.map(p => `${(p.x/paperWidth)*100} ${(1 - p.y/paperHeight)*100}`).join(" L ")} Z`}
-                                            fill="none" 
-                                            stroke={viewMode === 'contour' ? '#000000' : '#10b981'} 
-                                            strokeWidth={viewMode === 'contour' ? "1.5" : "1"}
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                        {objectDims && viewMode !== 'heatmap' && (
-                                            <g>
-                                                {/* Smart Guide Lines */}
-                                                {viewMode !== 'contour' && (
-                                                <rect 
-                                                    x={`${(objectDims.minX/paperWidth)*100}%`} 
-                                                    y={`${(1 - objectDims.maxY/paperHeight)*100}%`}
-                                                    width={`${(objectDims.width/paperWidth)*100}%`}
-                                                    height={`${(objectDims.height/paperHeight)*100}%`}
-                                                    fill="none" stroke="rgba(255,255,255,0.3)" strokeDasharray="2" vectorEffect="non-scaling-stroke"
-                                                />
-                                                )}
-                                                
-                                                {/* Measurements */}
-                                                <line 
-                                                    x1={`${(objectDims.minX/paperWidth)*100}%`} y1={`${(1 - objectDims.maxY/paperHeight)*100}%`}
-                                                    x2={`${(objectDims.maxX/paperWidth)*100}%`} y2={`${(1 - objectDims.maxY/paperHeight)*100}%`}
-                                                    stroke={viewMode === 'contour' ? 'black' : 'white'} strokeWidth="0.5" transform="translate(0, -5)" vectorEffect="non-scaling-stroke"
-                                                />
-                                                <text 
-                                                    x={`${((objectDims.minX + objectDims.width/2)/paperWidth)*100}%`} 
-                                                    y={`${(1 - objectDims.maxY/paperHeight)*100}%`} 
-                                                    dy="-8" 
-                                                    fill={viewMode === 'contour' ? 'black' : 'white'} 
-                                                    textAnchor="middle" fontSize="3" fontWeight="bold" 
-                                                    style={{textShadow: viewMode === 'contour' ? 'none' : '0px 2px 4px rgba(0,0,0,1)'}}
-                                                >
-                                                    {objectDims.width.toFixed(1)} mm
-                                                </text>
-
-                                                <line 
-                                                    x1={`${(objectDims.maxX/paperWidth)*100}%`} y1={`${(1 - objectDims.maxY/paperHeight)*100}%`}
-                                                    x2={`${(objectDims.maxX/paperWidth)*100}%`} y2={`${(1 - objectDims.minY/paperHeight)*100}%`}
-                                                    stroke={viewMode === 'contour' ? 'black' : 'white'} strokeWidth="0.5" transform="translate(5, 0)" vectorEffect="non-scaling-stroke"
-                                                />
-                                                <text 
-                                                    x={`${(objectDims.maxX/paperWidth)*100}%`} 
-                                                    y={`${(1 - (objectDims.minY + objectDims.height/2)/paperHeight)*100}%`} 
-                                                    dx="8" 
-                                                    fill={viewMode === 'contour' ? 'black' : 'white'} 
-                                                    dominantBaseline="middle" fontSize="3" fontWeight="bold"
-                                                    style={{textShadow: viewMode === 'contour' ? 'none' : '0px 2px 4px rgba(0,0,0,1)'}}
-                                                >
-                                                    {objectDims.height.toFixed(1)} mm
-                                                </text>
-                                            </g>
+                                {/* Render all detected polygons */}
+                                {detectedPolygons.map((poly, polyIdx) => (
+                                    <g key={polyIdx}>
+                                        {/* Outer contour */}
+                                        {poly.outer.length > 0 && (
+                                            <path 
+                                                d={`M ${poly.outer.map(p => `${(p.x/paperWidth)*100} ${(1 - p.y/paperHeight)*100}`).join(" L ")} Z`}
+                                                fill="none" 
+                                                stroke={viewMode === 'contour' ? '#000000' : (polyIdx === selectedPolygonIndex ? '#10b981' : '#3b82f6')} 
+                                                strokeWidth={viewMode === 'contour' ? "1.5" : (polyIdx === selectedPolygonIndex ? "1.5" : "0.8")}
+                                                vectorEffect="non-scaling-stroke"
+                                            />
                                         )}
-                                    </>
+                                        {/* Holes */}
+                                        {poly.holes.map((hole, holeIdx) => (
+                                            hole.length > 0 && (
+                                                <path 
+                                                    key={`hole-${holeIdx}`}
+                                                    d={`M ${hole.map(p => `${(p.x/paperWidth)*100} ${(1 - p.y/paperHeight)*100}`).join(" L ")} Z`}
+                                                    fill="none" 
+                                                    stroke={viewMode === 'contour' ? '#666666' : '#f59e0b'} 
+                                                    strokeWidth={viewMode === 'contour' ? "1" : "0.8"}
+                                                    strokeDasharray={viewMode === 'contour' ? "none" : "2 1"}
+                                                    vectorEffect="non-scaling-stroke"
+                                                />
+                                            )
+                                        ))}
+                                    </g>
+                                ))}
+                                
+                                {/* Fallback to single processedPath if no polygons */}
+                                {detectedPolygons.length === 0 && processedPath.length > 0 && (
+                                    <path 
+                                        d={`M ${processedPath.map(p => `${(p.x/paperWidth)*100} ${(1 - p.y/paperHeight)*100}`).join(" L ")} Z`}
+                                        fill="none" 
+                                        stroke={viewMode === 'contour' ? '#000000' : '#10b981'} 
+                                        strokeWidth={viewMode === 'contour' ? "1.5" : "1"}
+                                        vectorEffect="non-scaling-stroke"
+                                    />
+                                )}
+                                
+                                {objectDims && viewMode !== 'heatmap' && (
+                                    <g>
+                                        {/* Smart Guide Lines */}
+                                        {viewMode !== 'contour' && (
+                                        <rect 
+                                            x={`${(objectDims.minX/paperWidth)*100}%`} 
+                                            y={`${(1 - objectDims.maxY/paperHeight)*100}%`}
+                                            width={`${(objectDims.width/paperWidth)*100}%`}
+                                            height={`${(objectDims.height/paperHeight)*100}%`}
+                                            fill="none" stroke="rgba(255,255,255,0.3)" strokeDasharray="2" vectorEffect="non-scaling-stroke"
+                                        />
+                                        )}
+                                        
+                                        {/* Measurements */}
+                                        <line 
+                                            x1={`${(objectDims.minX/paperWidth)*100}%`} y1={`${(1 - objectDims.maxY/paperHeight)*100}%`}
+                                            x2={`${(objectDims.maxX/paperWidth)*100}%`} y2={`${(1 - objectDims.maxY/paperHeight)*100}%`}
+                                            stroke={viewMode === 'contour' ? 'black' : 'white'} strokeWidth="0.5" transform="translate(0, -5)" vectorEffect="non-scaling-stroke"
+                                        />
+                                        <text 
+                                            x={`${((objectDims.minX + objectDims.width/2)/paperWidth)*100}%`} 
+                                            y={`${(1 - objectDims.maxY/paperHeight)*100}%`} 
+                                            dy="-8" 
+                                            fill={viewMode === 'contour' ? 'black' : 'white'} 
+                                            textAnchor="middle" fontSize="3" fontWeight="bold" 
+                                            style={{textShadow: viewMode === 'contour' ? 'none' : '0px 2px 4px rgba(0,0,0,1)'}}
+                                        >
+                                            {objectDims.width.toFixed(1)} mm
+                                        </text>
+
+                                        <line 
+                                            x1={`${(objectDims.maxX/paperWidth)*100}%`} y1={`${(1 - objectDims.maxY/paperHeight)*100}%`}
+                                            x2={`${(objectDims.maxX/paperWidth)*100}%`} y2={`${(1 - objectDims.minY/paperHeight)*100}%`}
+                                            stroke={viewMode === 'contour' ? 'black' : 'white'} strokeWidth="0.5" transform="translate(5, 0)" vectorEffect="non-scaling-stroke"
+                                        />
+                                        <text 
+                                            x={`${(objectDims.maxX/paperWidth)*100}%`} 
+                                            y={`${(1 - (objectDims.minY + objectDims.height/2)/paperHeight)*100}%`} 
+                                            dx="8" 
+                                            fill={viewMode === 'contour' ? 'black' : 'white'} 
+                                            dominantBaseline="middle" fontSize="3" fontWeight="bold"
+                                            style={{textShadow: viewMode === 'contour' ? 'none' : '0px 2px 4px rgba(0,0,0,1)'}}
+                                        >
+                                            {objectDims.height.toFixed(1)} mm
+                                        </text>
+                                    </g>
                                 )}
                             </svg>
                         )}
@@ -1331,9 +1647,34 @@ const ShapeScanner = () => {
                             </div>
                         )}
                         
-                        {detectedShapeType && (
-                            <div className="absolute top-4 left-4 bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest z-30 flex items-center gap-1.5 border border-green-500">
-                                <Check size={12} className="stroke-[3]" /> {detectedShapeType} Detected
+                        {detectedPolygons.length > 0 && (
+                            <div className="absolute top-4 left-4 flex flex-col gap-2 z-30">
+                                <div className="bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 border border-green-500">
+                                    <Check size={12} className="stroke-[3]" /> 
+                                    {detectedPolygons.length} Shape{detectedPolygons.length > 1 ? 's' : ''} 
+                                    {detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0) > 0 && (
+                                        <span className="ml-1 text-amber-300">
+                                            + {detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0)} Hole{detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0) > 1 ? 's' : ''}
+                                        </span>
+                                    )}
+                                </div>
+                                {detectedPolygons.length > 1 && (
+                                    <div className="flex gap-1 flex-wrap">
+                                        {detectedPolygons.map((_, idx) => (
+                                            <button 
+                                                key={idx}
+                                                onClick={() => setSelectedPolygonIndex(idx)}
+                                                className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
+                                                    idx === selectedPolygonIndex 
+                                                        ? 'bg-emerald-500 text-white shadow-lg' 
+                                                        : 'bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700'
+                                                }`}
+                                            >
+                                                {idx + 1}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

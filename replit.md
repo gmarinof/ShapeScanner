@@ -1,0 +1,48 @@
+# ShapeScanner
+
+## Overview
+ShapeScanner is a mobile app that scans physical objects from photos and converts them to vectorized DXF files for CAD/CNC manufacturing. Built with React + Vite + Tailwind CSS + Capacitor for Android deployment.
+
+## Project Structure
+```
+shape-scanner-app/
+├── src/
+│   ├── App.jsx          # Main application component
+│   ├── main.jsx         # Entry point
+│   └── index.css        # Global styles (Tailwind)
+├── android/             # Capacitor Android project
+├── public/              # Static assets
+├── capacitor.config.json
+├── vite.config.js
+└── package.json
+
+.github/workflows/
+└── build-apk.yml        # GitHub Actions for APK build
+```
+
+## Key Features
+- Photo capture/upload with perspective correction
+- Automatic paper corner detection (Otsu thresholding)
+- Multi-polygon detection with hole support
+- Shape fitting (circles, polygons)
+- DXF export for CAD software
+- AI analysis with Gemini Vision (optional)
+
+## Running the App
+```bash
+cd shape-scanner-app && npm run dev
+```
+
+## Building APK
+Push to GitHub and trigger the Actions workflow:
+```bash
+git add .
+git commit -m "message"
+git push github main
+```
+
+## Recent Changes (Dec 2024)
+- Added multi-polygon detection using Moore neighborhood contour tracing
+- Hole detection for shapes like washers and frames
+- Updated DXF export to handle multiple shapes with proper layer naming
+- Polygon selector UI for switching between detected shapes
