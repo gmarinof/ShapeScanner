@@ -47,3 +47,8 @@ git push github main
 - DXF export with correct winding direction (CCW for outer contours, CW for holes)
 - Polygon selector UI for switching between detected shapes
 - Separate layers in DXF for each shape and hole
+
+### Dec 14, 2024
+- Camera capture using Capacitor Camera.getPhoto() for native platforms
+- Process view zoom/pan: scroll wheel to zoom, middle-click/Alt+drag to pan
+- Draggable detection badge (green shape count label)
