@@ -414,7 +414,13 @@ const ShapeScanner = () => {
     }
   };
 
-  const handleEnd = () => { setActiveCorner(null); setIsPanning(false); };
+  const handleEnd = () => { 
+    if (activeCorner !== null) {
+      fitToScreen();
+    }
+    setActiveCorner(null); 
+    setIsPanning(false); 
+  };
   
   const handleWheel = (e) => {
     if (step !== 'calibrate') return;
