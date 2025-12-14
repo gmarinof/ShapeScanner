@@ -42,7 +42,8 @@ git push github main
 ```
 
 ## Recent Changes (Dec 2024)
-- Added multi-polygon detection using Moore neighborhood contour tracing
-- Hole detection for shapes like washers and frames
-- Updated DXF export to handle multiple shapes with proper layer naming
+- Multi-polygon detection with 4-connectivity boundary tracing
+- Hole detection for shapes like washers and frames with proper component ownership
+- DXF export with correct winding direction (CCW for outer contours, CW for holes)
 - Polygon selector UI for switching between detected shapes
+- Separate layers in DXF for each shape and hole
