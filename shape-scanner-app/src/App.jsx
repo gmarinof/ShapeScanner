@@ -278,6 +278,11 @@ const ShapeScanner = () => {
   const [selectionBox, setSelectionBox] = useState(null); 
   const [dragStart, setDragStart] = useState(null);
   const [isPicking, setIsPicking] = useState(false);
+  
+  // Save Dialog
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveFileName, setSaveFileName] = useState('');
+  const [saveType, setSaveType] = useState('dxf');
 
   // Refs
   const canvasRef = useRef(null);
@@ -799,18 +804,35 @@ const ShapeScanner = () => {
     }
   }, [step, threshold, scanStep, curveSmoothing, processImage, segmentMode, showMask, invertResult, viewMode, smartRefine, shadowRemoval, noiseFilter]);
 
-  const downloadDXF = async () => {
+  const openSaveDialog = (type) => {
+    const defaultName = type === 'dxf' ? 'scan_shape' : `scan_w${paperWidth}mm_h${paperHeight}mm`;
+    setSaveFileName(defaultName);
+    setSaveType(type);
+    setShowSaveDialog(true);
+  };
+
+  const confirmSave = async () => {
+    const cleanName = saveFileName.trim() || 'scan_shape';
+    setShowSaveDialog(false);
+    if (saveType === 'dxf') {
+      await performDXFSave(cleanName);
+    } else {
+      await performImageSave(cleanName);
+    }
+  };
+
+  const performDXFSave = async (baseName) => {
     if (processedPath.length < 2) return;
     let dxf = "0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nObjectLayer\n90\n" + processedPath.length + "\n70\n1\n";
     processedPath.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
     dxf += "0\nENDSEC\n0\nEOF";
     
-    const filename = `scan_shape_${Date.now()}.dxf`;
+    const filename = `${baseName}.dxf`;
     
     if (Capacitor.isNativePlatform()) {
       try {
         await Filesystem.requestPermissions();
-        const result = await Filesystem.writeFile({
+        await Filesystem.writeFile({
           path: filename,
           data: dxf,
           directory: Directory.Documents,
@@ -833,7 +855,7 @@ const ShapeScanner = () => {
   };
 
   // --- NEW: Export Image for CAD ---
-  const downloadImage = async () => {
+  const performImageSave = async (baseName) => {
       if (!sourcePixelData.current || !unwarpedBufferRef.current) return;
       const { width, height, data } = unwarpedBufferRef.current;
       const canvas = document.createElement('canvas');
@@ -844,7 +866,7 @@ const ShapeScanner = () => {
       for(let i=0; i<data.length; i++) imgData.data[i] = data[i];
       ctx.putImageData(imgData, 0, 0);
       
-      const filename = `scan_w${paperWidth}mm_h${paperHeight}mm_${Date.now()}.png`;
+      const filename = `${baseName}.png`;
       
       if (Capacitor.isNativePlatform()) {
         try {
@@ -938,6 +960,45 @@ const ShapeScanner = () => {
             </div>
         </div>
       </div>
+
+      {/* Save Dialog Modal */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 rounded-2xl border border-neutral-700 p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-white font-bold text-lg mb-4">Save {saveType === 'dxf' ? 'DXF Vector' : 'Image'}</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-neutral-400 uppercase font-bold block mb-2">File Name</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={saveFileName}
+                    onChange={(e) => setSaveFileName(e.target.value)}
+                    placeholder="Enter filename"
+                    className="flex-1 bg-black border border-neutral-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                    autoFocus
+                  />
+                  <span className="text-neutral-500 font-mono text-sm">.{saveType === 'dxf' ? 'dxf' : 'png'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSave}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+              >
+                <Download size={16} /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 relative bg-black overflow-hidden w-full h-full flex flex-col">
         
@@ -1337,10 +1398,10 @@ const ShapeScanner = () => {
                         </div>
 
                         <div className="flex gap-3 mt-2 pb-6">
-                            <button onClick={downloadImage} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98]">
+                            <button onClick={() => openSaveDialog('image')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98]">
                                 <ImageIcon size={16} /> Save Image
                             </button>
-                            <button onClick={downloadDXF} disabled={processedPath.length < 3} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
+                            <button onClick={() => openSaveDialog('dxf')} disabled={processedPath.length < 3} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
                                 <Download size={16} /> Save Vector DXF
                             </button>
                         </div>
@@ -1348,7 +1409,7 @@ const ShapeScanner = () => {
                 ) : (
                     <div className="text-center py-8 text-neutral-500 text-sm flex flex-col gap-4 items-center pb-12">
                         <p className="max-w-[200px]">Switch to <b>Processed</b> or <b>Heatmap</b> mode above to configure detection settings.</p>
-                        <button onClick={downloadImage} className="w-full max-w-xs bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all">
+                        <button onClick={() => openSaveDialog('image')} className="w-full max-w-xs bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all">
                             <ImageIcon size={16} /> Save Original Image
                         </button>
                     </div>
