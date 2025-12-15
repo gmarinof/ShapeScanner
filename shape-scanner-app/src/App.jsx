@@ -963,16 +963,11 @@ const ShapeScanner = () => {
     };
     
     // Calculate color distance from the selected paper color
+    // Paper color is stored as raw values, so compare raw to raw
     const getColorDistance = (r, g, b) => {
-      // Apply contrast first
-      const cr = applyContrast(r);
-      const cg = applyContrast(g);
-      const cb = applyContrast(b);
-      // Calculate distance from paper color (also contrast-adjusted for consistency)
-      const pr = applyContrast(paperColor.r);
-      const pg = applyContrast(paperColor.g);
-      const pb = applyContrast(paperColor.b);
-      return Math.sqrt((cr - pr)**2 + (cg - pg)**2 + (cb - pb)**2);
+      // Direct comparison with paper color (no contrast adjustment needed)
+      // The contrast slider affects visual display, Otsu threshold handles the rest
+      return Math.sqrt((r - paperColor.r)**2 + (g - paperColor.g)**2 + (b - paperColor.b)**2);
     };
     
     // Build histogram of color distances to find optimal threshold
