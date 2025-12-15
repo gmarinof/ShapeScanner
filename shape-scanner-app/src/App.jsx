@@ -544,6 +544,8 @@ const ShapeScanner = () => {
   const [calContrast, setCalContrast] = useState(100);
   const [corners, setCorners] = useState([]); 
   const [activeCorner, setActiveCorner] = useState(null);
+  const [paperColor, setPaperColor] = useState({ r: 255, g: 255, b: 255 }); // Default white paper
+  const [isPickingPaperColor, setIsPickingPaperColor] = useState(false);
   const [paperWidth, setPaperWidth] = useState(210); 
   const [paperHeight, setPaperHeight] = useState(297); 
   const [orientation, setOrientation] = useState('portrait'); 
@@ -846,6 +848,18 @@ const ShapeScanner = () => {
     const rect = canvasRef.current.getBoundingClientRect();
     const sx = clientX - rect.left; const sy = clientY - rect.top;
     const p = toImageCoords(sx, sy);
+    
+    // Handle paper color picking
+    if (isPickingPaperColor && sourcePixelData.current) {
+      const ix = Math.floor(p.x); const iy = Math.floor(p.y);
+      if (ix >= 0 && ix < imgDims.w && iy >= 0 && iy < imgDims.h) {
+        const i = (iy * imgDims.w + ix) * 4;
+        setPaperColor({ r: sourcePixelData.current[i], g: sourcePixelData.current[i+1], b: sourcePixelData.current[i+2] });
+        setIsPickingPaperColor(false);
+      }
+      return;
+    }
+    
     const hitRadius = 30 / view.scale; 
     let closest = -1; let minD = Infinity;
     corners.forEach((c, i) => {
@@ -936,7 +950,7 @@ const ShapeScanner = () => {
     }
   }, [corners, step, imageSrc, imgDims, view, calMonochrome, calContrast]);
 
-  // --- OTSU AUTO DETECT (uses contrast-adjusted image) ---
+  // --- AUTO DETECT (uses paper color + contrast) ---
   const autoDetectCorners = useCallback(() => {
     if (!sourcePixelData.current) return;
     const width = imgDims.w; const height = imgDims.h; const srcData = sourcePixelData.current;
@@ -948,26 +962,30 @@ const ShapeScanner = () => {
       return Math.max(0, Math.min(255, adjusted));
     };
     
-    // Apply monochrome if enabled
-    const getLuminance = (r, g, b) => {
-      let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (calMonochrome) {
-        // Apply contrast to grayscale
-        lum = applyContrast(lum);
-      } else {
-        // Apply contrast to each channel then compute luminance
-        lum = 0.299 * applyContrast(r) + 0.587 * applyContrast(g) + 0.114 * applyContrast(b);
-      }
-      return lum;
+    // Calculate color distance from the selected paper color
+    const getColorDistance = (r, g, b) => {
+      // Apply contrast first
+      const cr = applyContrast(r);
+      const cg = applyContrast(g);
+      const cb = applyContrast(b);
+      // Calculate distance from paper color (also contrast-adjusted for consistency)
+      const pr = applyContrast(paperColor.r);
+      const pg = applyContrast(paperColor.g);
+      const pb = applyContrast(paperColor.b);
+      return Math.sqrt((cr - pr)**2 + (cg - pg)**2 + (cb - pb)**2);
     };
     
+    // Build histogram of color distances to find optimal threshold
+    const maxDist = 442; // sqrt(255^2 * 3)
     const histogram = new Array(256).fill(0);
     const step = 4;
     for(let i=0; i<srcData.length; i+=4*step) {
-        const lum = Math.round(getLuminance(srcData[i], srcData[i+1], srcData[i+2]));
-        histogram[Math.max(0, Math.min(255, lum))]++;
+        const dist = getColorDistance(srcData[i], srcData[i+1], srcData[i+2]);
+        const normalized = Math.round((dist / maxDist) * 255);
+        histogram[Math.max(0, Math.min(255, normalized))]++;
     }
 
+    // Otsu's method on color distance histogram
     let sum = 0; for (let i = 0; i < 256; i++) sum += i * histogram[i];
     let sumB = 0; let wB = 0; let wF = 0; let maxVar = 0; let otsuThreshold = 0;
     const total = (srcData.length / 4) / step;
@@ -980,6 +998,9 @@ const ShapeScanner = () => {
         const varBetween = wB * wF * (mB - mF) * (mB - mF);
         if (varBetween > maxVar) { maxVar = varBetween; otsuThreshold = i; }
     }
+    
+    // Convert back to actual distance threshold
+    const distThreshold = (otsuThreshold / 255) * maxDist;
 
     let tl = { val: Infinity, x: 0, y: 0 }; let tr = { val: -Infinity, x: 0, y: 0 };
     let br = { val: -Infinity, x: 0, y: 0 }; let bl = { val: Infinity, x: 0, y: 0 };
@@ -988,9 +1009,10 @@ const ShapeScanner = () => {
     for (let y = padding; y < height - padding; y += step) {
       for (let x = padding; x < width - padding; x += step) {
         const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-        const brightness = getLuminance(srcData[i], srcData[i+1], srcData[i+2]);
+        const dist = getColorDistance(srcData[i], srcData[i+1], srcData[i+2]);
         
-        if (brightness > otsuThreshold) { 
+        // Pixel is "paper" if its color is close to the selected paper color
+        if (dist < distThreshold) { 
           const sum = x + y; const diff = x - y;
           if (sum < tl.val) { tl.val = sum; tl.x = x; tl.y = y; }
           if (diff > tr.val) { tr.val = diff; tr.x = x; tr.y = y; }
@@ -1000,7 +1022,7 @@ const ShapeScanner = () => {
       }
     }
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  }, [imgDims, calContrast, calMonochrome]);
+  }, [imgDims, calContrast, paperColor]);
 
 
   // --- POINT IN POLYGON TEST ---
@@ -2120,7 +2142,22 @@ const ShapeScanner = () => {
                         <ScanLine size={14} /> Auto-Detect
                     </button>
 
-                    <div className="bg-black/80 backdrop-blur rounded-lg p-3 pointer-events-auto shadow-lg flex flex-col gap-3 border border-neutral-800 w-40">
+                    <div className="bg-black/80 backdrop-blur rounded-lg p-3 pointer-events-auto shadow-lg flex flex-col gap-3 border border-neutral-800 w-44">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-neutral-400 flex items-center gap-2"><Pipette size={12}/> Paper</span>
+                            <div className="flex items-center gap-2">
+                                <div 
+                                    className="w-5 h-5 rounded-full border border-neutral-600 shadow-inner" 
+                                    style={{backgroundColor: `rgb(${paperColor.r},${paperColor.g},${paperColor.b})`}} 
+                                />
+                                <button 
+                                    onClick={() => setIsPickingPaperColor(!isPickingPaperColor)}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isPickingPaperColor ? 'bg-amber-500 text-black' : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'}`}
+                                >
+                                    {isPickingPaperColor ? 'Tap Paper' : 'Pick'}
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-neutral-400 flex items-center gap-2"><Palette size={12}/> B&W</span>
                             <button 
@@ -2142,6 +2179,12 @@ const ShapeScanner = () => {
                             />
                         </div>
                     </div>
+                    
+                    {isPickingPaperColor && (
+                        <div className="bg-amber-500/90 backdrop-blur text-black font-bold px-4 py-2 rounded-full text-xs shadow-lg animate-pulse pointer-events-none">
+                            Tap on the paper
+                        </div>
+                    )}
                 </div>
             </div>
 

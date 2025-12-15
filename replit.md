@@ -73,3 +73,8 @@ git push github main
   - Uses `needsDetectionReprocess` flag for detection settings changes
   - Uses `needsReprocess` flag for vector-only settings changes
   - `unwarpedBufferRef` stores the grayscale buffer for per-polygon ROI reprocessing
+- **Improved corner detection**:
+  - Extended contrast slider range (25%-300%) for better visibility
+  - Added paper color picker - tap "Pick" then tap on the paper to select its color
+  - Auto-detect now finds corners based on the selected paper color (not just white)
+  - Uses color distance + Otsu thresholding for robust detection on any paper color
