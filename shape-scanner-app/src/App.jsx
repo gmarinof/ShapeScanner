@@ -2597,8 +2597,6 @@ const ShapeScanner = () => {
         ctx.filter = `grayscale(${calMonochrome ? 100 : 0}%) contrast(${calContrast}%)`;
         ctx.drawImage(img, 0, 0, imgDims.w, imgDims.h);
         ctx.filter = 'none';
-        ctx.fillStyle = 'rgba(0,0,0,0.6)'; // Darker overlay for better contrast
-        ctx.fillRect(0, 0, imgDims.w, imgDims.h);
         ctx.beginPath();
         ctx.moveTo(corners[0].x, corners[0].y); ctx.lineTo(corners[1].x, corners[1].y);
         ctx.lineTo(corners[2].x, corners[2].y); ctx.lineTo(corners[3].x, corners[3].y);
