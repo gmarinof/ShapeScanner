@@ -77,6 +77,10 @@ git push github main
   - Removed `selectedPolygonIndex` from processImage dependencies to prevent full re-detection on polygon switch
   - Added separate lightweight effect for polygon selection display updates
   - Each polygon maintains independent settings even after switching away and back
+- **Fixed per-polygon reprocessing coordinates**: Per-polygon detection now correctly updates the actual shape
+  - Fixed double-scaling bug in `reprocessPolygonDetection` - now uses full paper dimensions
+  - Proper ROI-local to global mm coordinate conversion
+  - pixelBbox is recalculated after each reprocess for subsequent edits
 - **Improved corner detection with Canny edge detection**:
   - New `EdgeDetector` class with Sobel gradient computation
   - Gaussian blur with mirror boundary handling

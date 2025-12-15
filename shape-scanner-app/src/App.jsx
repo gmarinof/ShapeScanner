@@ -2117,25 +2117,36 @@ const ShapeScanner = () => {
       }
     }
     
-    // Detect polygons in the ROI
-    const roiPolygons = ContourTracer.detectPolygons(roiMask, roiWidth, roiHeight, 
-      (roiWidth / bufWidth) * paperWidth, 
-      (roiHeight / bufHeight) * paperHeight, 
-      polyScan);
+    // Detect polygons in the ROI - use full paper dimensions to avoid double-scaling
+    // ContourTracer converts pixel coords to mm assuming buffer spans full paper
+    const roiPolygons = ContourTracer.detectPolygons(roiMask, roiWidth, roiHeight, paperWidth, paperHeight, polyScan);
     
     if (roiPolygons.length === 0) return;
     
     // Get the largest polygon (should be the main shape in ROI)
     const mainPoly = roiPolygons.reduce((a, b) => (b.outer?.length > a.outer?.length ? b : a), roiPolygons[0]);
     
-    // Convert ROI coordinates back to global mm coordinates
-    const roiOffsetXmm = (roiMinX / bufWidth) * paperWidth;
-    const roiOffsetYmm = ((bufHeight - roiMaxY - 1) / bufHeight) * paperHeight;
+    // Convert ROI-local mm coordinates to global mm coordinates
+    // ContourTracer output: x = (pixel.x / roiWidth) * paperWidth, y = ((roiHeight - pixel.y) / roiHeight) * paperHeight
+    // We need to map ROI pixel positions to their global buffer positions, then to global mm
+    // ROI pixel (rx, ry) corresponds to global buffer pixel (roiMinX + rx, roiMinY + ry)
+    // Global mm: x = ((roiMinX + rx) / bufWidth) * paperWidth
+    //            y = ((bufHeight - (roiMinY + ry)) / bufHeight) * paperHeight
+    // So we need to reverse the ContourTracer conversion and apply the correct global one
     
-    let outerPoints = mainPoly.outer.map(p => ({
-      x: p.x + roiOffsetXmm,
-      y: p.y + roiOffsetYmm
-    }));
+    let outerPoints = mainPoly.outer.map(p => {
+      // Reverse ContourTracer conversion to get ROI pixel coords
+      const rxApprox = (p.x / paperWidth) * roiWidth;
+      const ryApprox = roiHeight - (p.y / paperHeight) * roiHeight;
+      // Convert to global buffer coords
+      const globalX = roiMinX + rxApprox;
+      const globalY = roiMinY + ryApprox;
+      // Convert to global mm coords
+      return {
+        x: (globalX / bufWidth) * paperWidth,
+        y: ((bufHeight - globalY) / bufHeight) * paperHeight
+      };
+    });
     
     const rawOuter = [...outerPoints];
     
@@ -2155,12 +2166,21 @@ const ShapeScanner = () => {
       outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
     }
     
+    // Helper to convert ROI mm coords to global mm coords
+    const convertToGlobalMm = (p) => {
+      const rxApprox = (p.x / paperWidth) * roiWidth;
+      const ryApprox = roiHeight - (p.y / paperHeight) * roiHeight;
+      const globalX = roiMinX + rxApprox;
+      const globalY = roiMinY + ryApprox;
+      return {
+        x: (globalX / bufWidth) * paperWidth,
+        y: ((bufHeight - globalY) / bufHeight) * paperHeight
+      };
+    };
+    
     // Process holes
     const refinedHoles = (mainPoly.holes || []).map(hole => {
-      let holePoints = hole.map(p => ({
-        x: p.x + roiOffsetXmm,
-        y: p.y + roiOffsetYmm
-      }));
+      let holePoints = hole.map(convertToGlobalMm);
       if (polySmartRefine) {
         const holeFit = ShapeFitter.fitCircle(holePoints);
         if (holeFit) {
@@ -2176,9 +2196,7 @@ const ShapeScanner = () => {
       return holePoints;
     });
     
-    const rawHoles = (mainPoly.holes || []).map(hole => 
-      hole.map(p => ({ x: p.x + roiOffsetXmm, y: p.y + roiOffsetYmm }))
-    );
+    const rawHoles = (mainPoly.holes || []).map(hole => hole.map(convertToGlobalMm));
     
     // Update the polygon with new detection results
     setDetectedPolygons(prev => {
@@ -2188,6 +2206,14 @@ const ShapeScanner = () => {
       const minY = Math.min(...outerPoints.map(p => p.y));
       const maxY = Math.max(...outerPoints.map(p => p.y));
       
+      // Recalculate pixelBbox for subsequent edits
+      const newPixelBbox = {
+        minX: Math.floor((minX / paperWidth) * bufWidth),
+        maxX: Math.ceil((maxX / paperWidth) * bufWidth),
+        minY: Math.floor((1 - maxY / paperHeight) * bufHeight),
+        maxY: Math.ceil((1 - minY / paperHeight) * bufHeight)
+      };
+      
       updated[polygonIndex] = {
         ...updated[polygonIndex],
         outer: outerPoints,
@@ -2196,6 +2222,7 @@ const ShapeScanner = () => {
         rawHoles,
         type: detected,
         bbox: { minX, maxX, minY, maxY },
+        pixelBbox: newPixelBbox,
         needsReprocess: false,
         needsDetectionReprocess: false
       };
