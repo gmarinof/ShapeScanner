@@ -2117,36 +2117,53 @@ const ShapeScanner = () => {
       }
     }
     
-    // Detect polygons in the ROI - use full paper dimensions to avoid double-scaling
-    // ContourTracer converts pixel coords to mm assuming buffer spans full paper
-    const roiPolygons = ContourTracer.detectPolygons(roiMask, roiWidth, roiHeight, paperWidth, paperHeight, polyScan);
+    // Use ContourTracer's low-level functions directly to avoid coordinate conversion issues
+    // Label connected components in ROI
+    const { labels, components } = ContourTracer.labelComponents(roiMask, roiWidth, roiHeight);
     
-    if (roiPolygons.length === 0) return;
+    if (components.length === 0) return;
     
-    // Get the largest polygon (should be the main shape in ROI)
-    const mainPoly = roiPolygons.reduce((a, b) => (b.outer?.length > a.outer?.length ? b : a), roiPolygons[0]);
+    // Get the largest component
+    components.sort((a, b) => b.size - a.size);
+    const mainComponent = components[0];
     
-    // Convert ROI-local mm coordinates to global mm coordinates
-    // ContourTracer output: x = (pixel.x / roiWidth) * paperWidth, y = ((roiHeight - pixel.y) / roiHeight) * paperHeight
-    // We need to map ROI pixel positions to their global buffer positions, then to global mm
-    // ROI pixel (rx, ry) corresponds to global buffer pixel (roiMinX + rx, roiMinY + ry)
-    // Global mm: x = ((roiMinX + rx) / bufWidth) * paperWidth
-    //            y = ((bufHeight - (roiMinY + ry)) / bufHeight) * paperHeight
-    // So we need to reverse the ContourTracer conversion and apply the correct global one
+    // Find starting point for boundary tracing
+    let startPixel = mainComponent.pixels[0];
+    for (const p of mainComponent.pixels) {
+      if (p.y < startPixel.y || (p.y === startPixel.y && p.x < startPixel.x)) {
+        startPixel = p;
+      }
+    }
     
-    let outerPoints = mainPoly.outer.map(p => {
-      // Reverse ContourTracer conversion to get ROI pixel coords
-      const rxApprox = (p.x / paperWidth) * roiWidth;
-      const ryApprox = roiHeight - (p.y / paperHeight) * roiHeight;
-      // Convert to global buffer coords
-      const globalX = roiMinX + rxApprox;
-      const globalY = roiMinY + ryApprox;
-      // Convert to global mm coords
+    // Trace boundary in ROI pixel coordinates
+    const boundary = ContourTracer.traceBoundary4(roiMask, roiWidth, roiHeight, startPixel.x, startPixel.y, mainComponent.label, labels);
+    if (boundary.length < 5) return;
+    
+    // Simplify contour
+    const simplified = ContourTracer.simplifyContour(boundary, polyScan);
+    
+    // Helper to convert ROI pixel coords to global mm coords directly
+    const roiPixelToGlobalMm = (p) => {
+      // p.x, p.y are in ROI pixel space (0 to roiWidth-1, 0 to roiHeight-1)
+      // Convert to global buffer pixel coords
+      const globalPixelX = roiMinX + p.x;
+      const globalPixelY = roiMinY + p.y;
+      // Convert to global mm (Y is flipped: buffer Y=0 is top, mm Y=0 is bottom)
       return {
-        x: (globalX / bufWidth) * paperWidth,
-        y: ((bufHeight - globalY) / bufHeight) * paperHeight
+        x: (globalPixelX / bufWidth) * paperWidth,
+        y: ((bufHeight - globalPixelY) / bufHeight) * paperHeight
       };
-    });
+    };
+    
+    // Convert to mm and ensure CCW winding for outer contour
+    let outerPoints = simplified.map(roiPixelToGlobalMm);
+    if (ContourTracer.signedArea(outerPoints) < 0) {
+      outerPoints = ContourTracer.reverseContour(outerPoints);
+    }
+    // Close the contour
+    if (outerPoints.length > 0) {
+      outerPoints.push({ ...outerPoints[0] });
+    }
     
     const rawOuter = [...outerPoints];
     
@@ -2166,21 +2183,41 @@ const ShapeScanner = () => {
       outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
     }
     
-    // Helper to convert ROI mm coords to global mm coords
-    const convertToGlobalMm = (p) => {
-      const rxApprox = (p.x / paperWidth) * roiWidth;
-      const ryApprox = roiHeight - (p.y / paperHeight) * roiHeight;
-      const globalX = roiMinX + rxApprox;
-      const globalY = roiMinY + ryApprox;
-      return {
-        x: (globalX / bufWidth) * paperWidth,
-        y: ((bufHeight - globalY) / bufHeight) * paperHeight
-      };
-    };
+    // Find and process holes
+    const holes = ContourTracer.findHoles(roiMask, labels, mainComponent.label, roiWidth, roiHeight, mainComponent.bbox);
+    const refinedHoles = [];
+    const rawHoles = [];
     
-    // Process holes
-    const refinedHoles = (mainPoly.holes || []).map(hole => {
-      let holePoints = hole.map(convertToGlobalMm);
+    for (const holePixels of holes) {
+      if (holePixels.length < 5) continue;
+      
+      // Find starting point for hole
+      let startHole = holePixels[0];
+      for (const p of holePixels) {
+        if (p.y < startHole.y || (p.y === startHole.y && p.x < startHole.x)) startHole = p;
+      }
+      
+      // Create temporary mask for hole tracing
+      const holeMask = new Uint8Array(roiWidth * roiHeight);
+      holePixels.forEach(p => { holeMask[p.y * roiWidth + p.x] = 1; });
+      
+      const holeBoundary = ContourTracer.traceBoundary4(holeMask, roiWidth, roiHeight, startHole.x, startHole.y, null, null);
+      if (holeBoundary.length < 5) continue;
+      
+      const holeSimplified = ContourTracer.simplifyContour(holeBoundary, polyScan);
+      let holePoints = holeSimplified.map(roiPixelToGlobalMm);
+      
+      // Ensure CW winding for holes
+      if (ContourTracer.signedArea(holePoints) > 0) {
+        holePoints = ContourTracer.reverseContour(holePoints);
+      }
+      if (holePoints.length > 0) {
+        holePoints.push({ ...holePoints[0] });
+      }
+      
+      rawHoles.push([...holePoints]);
+      
+      // Apply refinement
       if (polySmartRefine) {
         const holeFit = ShapeFitter.fitCircle(holePoints);
         if (holeFit) {
@@ -2193,10 +2230,8 @@ const ShapeScanner = () => {
         holePoints = VectorUtils.simplify(holePoints, 0.5);
         holePoints = VectorUtils.smooth(holePoints, polyCurve);
       }
-      return holePoints;
-    });
-    
-    const rawHoles = (mainPoly.holes || []).map(hole => hole.map(convertToGlobalMm));
+      refinedHoles.push(holePoints);
+    }
     
     // Update the polygon with new detection results
     setDetectedPolygons(prev => {
