@@ -57,8 +57,12 @@ git push github main
 - Fixed DXF export to include proper unit headers ($INSUNITS=4 for mm)
 - Added SVG export option with proper mm dimensions
 - **Per-polygon settings**: Each detected shape now has independent settings
-  - Settings include: threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult
+  - Curve smoothing and smart refine work per-polygon
+  - Other settings (threshold, noise, shadow, invert) are global
   - Green indicator bar shows which shape's settings are being edited
   - Reset button to restore shape to default settings
-  - Settings are preserved when switching between shapes
-  - Curve smoothing and smart refine are applied per-polygon using raw contour data
+
+### Dec 15, 2024
+- **Tap-to-select polygons**: Click/tap directly on shapes in the canvas to select them
+- Simplified per-polygon settings to only affect smoothing and shape fitting
+- Global settings (threshold, noise filter, shadow removal, invert) now affect all polygons
