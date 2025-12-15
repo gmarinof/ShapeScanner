@@ -1093,22 +1093,22 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
     if (!isOpen) return null;
     
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={onClose}>
-            <div className={`${isDarkTheme ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-neutral-300'} border rounded-2xl max-w-sm w-full shadow-2xl`} onClick={e => e.stopPropagation()}>
-                <div className={`p-4 border-b ${isDarkTheme ? 'border-neutral-800' : 'border-neutral-200'} flex items-center justify-between`}>
-                    <h2 className={`text-lg font-bold ${isDarkTheme ? 'text-white' : 'text-neutral-900'} flex items-center gap-2`}>
+        <div className="fixed inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={onClose}>
+            <div className="theme-bg-card border theme-border rounded-2xl max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b theme-border-secondary flex items-center justify-between">
+                    <h2 className="text-lg font-bold theme-text-primary flex items-center gap-2">
                         <Settings size={20} className="text-blue-400"/> Settings
                     </h2>
-                    <button onClick={onClose} className={`p-2 ${isDarkTheme ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'} rounded-lg transition-colors`}>
-                        <X size={20} className={isDarkTheme ? 'text-neutral-400' : 'text-neutral-600'}/>
+                    <button onClick={onClose} className="p-2 hover:theme-bg-tertiary rounded-lg transition-colors">
+                        <X size={20} className="theme-text-secondary"/>
                     </button>
                 </div>
                 
                 <div className="p-4 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>Dark Theme</p>
-                            <p className={`text-xs ${isDarkTheme ? 'text-neutral-500' : 'text-neutral-500'}`}>Switch between dark and light mode</p>
+                            <p className="text-sm font-medium theme-text-primary">Dark Theme</p>
+                            <p className="text-xs theme-text-muted">Switch between dark and light mode</p>
                         </div>
                         <button 
                             onClick={() => setIsDarkTheme(!isDarkTheme)}
@@ -1120,12 +1120,12 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
                     
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>Show Tutorial on Start</p>
-                            <p className={`text-xs ${isDarkTheme ? 'text-neutral-500' : 'text-neutral-500'}`}>Display walkthrough for new users</p>
+                            <p className="text-sm font-medium theme-text-primary">Show Tutorial on Start</p>
+                            <p className="text-xs theme-text-muted">Display walkthrough for new users</p>
                         </div>
                         <button 
                             onClick={() => setShowTutorialOnStart(!showTutorialOnStart)}
-                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : isDarkTheme ? 'bg-neutral-700' : 'bg-neutral-300'}`}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : 'bg-[var(--bg-tertiary)]'}`}
                         >
                             <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${showTutorialOnStart ? 'translate-x-6' : 'translate-x-1'}`}/>
                         </button>
@@ -1133,14 +1133,14 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
                     
                     <button 
                         onClick={() => { onOpenTutorial(); onClose(); }}
-                        className={`w-full py-3 rounded-xl ${isDarkTheme ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700' : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300'} border ${isDarkTheme ? 'text-white' : 'text-neutral-900'} text-sm font-medium flex items-center justify-center gap-2 transition-colors`}
+                        className="w-full py-3 rounded-xl theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary text-sm font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <BookOpen size={18}/> View Tutorial
                     </button>
                 </div>
                 
-                <div className={`p-4 border-t ${isDarkTheme ? 'border-neutral-800' : 'border-neutral-200'}`}>
-                    <p className={`text-[10px] ${isDarkTheme ? 'text-neutral-600' : 'text-neutral-400'} text-center`}>ShapeScanner v1.0 • Hotwave studio</p>
+                <div className="p-4 border-t theme-border-secondary">
+                    <p className="text-[10px] theme-text-muted text-center">ShapeScanner v1.0 • Hotwave studio</p>
                 </div>
             </div>
         </div>
@@ -2843,30 +2843,30 @@ const ShapeScanner = () => {
   }
 
   return (
-    <div className={`fixed inset-0 ${isDarkTheme ? 'bg-black text-neutral-200' : 'bg-neutral-100 text-neutral-800'} font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col`}>
+    <div data-theme={isDarkTheme ? 'dark' : 'light'} className="fixed inset-0 theme-bg-primary theme-text-primary font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col">
       
       {/* Header */}
-      <div className={`flex items-center justify-between p-4 ${isDarkTheme ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'} border-b z-10 shrink-0`}>
+      <div className="flex items-center justify-between p-4 theme-bg-secondary border-b theme-border z-10 shrink-0">
         <div className="flex items-center gap-2">
            <RefreshCcw className="text-blue-500" size={20} onClick={() => setStep('capture')}/>
-           <h1 className={`font-bold text-lg tracking-tight ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>ShapeScanner</h1>
+           <h1 className="font-bold text-lg tracking-tight theme-text-primary">ShapeScanner</h1>
         </div>
         <div className="flex items-center gap-2">
             <button 
                 onClick={() => setShowSettingsMenu(true)} 
-                className={`p-1.5 rounded ${isDarkTheme ? 'hover:bg-neutral-800 text-neutral-400 hover:text-white' : 'hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900'} transition-colors`}
+                className="p-1.5 rounded theme-text-secondary hover:theme-text-primary transition-colors"
                 title="Settings"
             >
                 <Settings size={18} />
             </button>
             <button 
                 onClick={() => setShowDebug(!showDebug)} 
-                className={`p-1 rounded ${showDebug ? 'bg-red-500 text-white' : isDarkTheme ? 'text-neutral-600 hover:text-white' : 'text-neutral-400 hover:text-neutral-900'}`}
+                className={`p-1 rounded ${showDebug ? 'bg-red-500 text-white' : 'theme-text-muted hover:theme-text-primary'}`}
                 title="Debug Info"
             >
                 <Bug size={16} />
             </button>
-            <div className={`text-xs font-mono ${isDarkTheme ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'} px-2 py-1 rounded`}>
+            <div className="text-xs font-mono theme-bg-tertiary theme-text-secondary px-2 py-1 rounded">
                 {step.toUpperCase()}
             </div>
         </div>
@@ -2935,11 +2935,11 @@ const ShapeScanner = () => {
         </div>
       )}
 
-      <div className="flex-1 relative bg-black overflow-hidden w-full h-full flex flex-col">
+      <div className="flex-1 relative theme-bg-primary overflow-hidden w-full h-full flex flex-col">
         
         {/* DEBUG OVERLAY */}
         {showDebug && (
-            <div className="absolute top-0 left-0 bg-black/90 text-green-400 p-2 text-[10px] font-mono z-50 pointer-events-none border border-neutral-800 m-2 rounded">
+            <div className="absolute top-0 left-0 bg-[var(--bg-overlay)] text-green-400 p-2 text-[10px] font-mono z-50 pointer-events-none border theme-border m-2 rounded">
                 <p>Img: {imgDims.w}x{imgDims.h}</p>
                 <p>Target: {Math.floor(paperWidth*2)}x{Math.floor(paperHeight*2)}</p>
                 <p>Mapped: {debugStats.mappedPixels} px</p>
@@ -2951,25 +2951,25 @@ const ShapeScanner = () => {
 
         {/* STEP 1: CAPTURE */}
         {step === 'capture' && (
-          <div className="h-full flex flex-col items-center justify-center p-6 space-y-8 bg-black w-full">
+          <div className="h-full flex flex-col items-center justify-center p-6 space-y-8 theme-bg-primary w-full">
             <div className="text-center space-y-4">
-              <div className="w-24 h-32 border-2 border-dashed border-neutral-700 mx-auto bg-neutral-900 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-                 <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center">
-                    <ScanLine size={20} className="text-neutral-500"/>
+              <div className="w-24 h-32 border-2 border-dashed theme-border mx-auto theme-bg-secondary rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(0,0,0,0.3)]">
+                 <div className="w-10 h-10 theme-bg-tertiary rounded-full flex items-center justify-center">
+                    <ScanLine size={20} className="theme-text-muted"/>
                  </div>
               </div>
               <div className="space-y-1">
-                  <h2 className="text-white font-bold text-lg">Scan Object</h2>
-                  <p className="text-neutral-500 text-sm max-w-[220px] mx-auto">
+                  <h2 className="theme-text-primary font-bold text-lg">Scan Object</h2>
+                  <p className="theme-text-muted text-sm max-w-[220px] mx-auto">
                     Place object on a white sheet. Ensure all 4 corners are visible.
                   </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
-                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all p-6 rounded-2xl shadow-lg group">
+                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all p-6 rounded-2xl shadow-lg group text-white">
                     <Upload size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Upload</span>
                 </button>
-                <button onClick={handleCameraCapture} className="flex flex-col items-center justify-center bg-neutral-800 hover:bg-neutral-700 active:scale-95 transition-all p-6 rounded-2xl border border-neutral-700 group">
+                <button onClick={handleCameraCapture} className="flex flex-col items-center justify-center theme-bg-tertiary hover:opacity-80 active:scale-95 transition-all p-6 rounded-2xl border theme-border group theme-text-primary">
                     <CameraIcon size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Camera</span>
                 </button>
             </div>
@@ -2995,10 +2995,10 @@ const ShapeScanner = () => {
                 />
 
                 <div className="absolute top-4 right-4 flex flex-col gap-2 pointer-events-none">
-                <div className="bg-black/80 backdrop-blur rounded-lg p-1 pointer-events-auto shadow-lg flex flex-col gap-1 border border-neutral-800">
-                    <button onClick={() => setView(v => ({...v, scale: v.scale * 1.2}))} className="p-2 hover:bg-neutral-800 rounded text-neutral-300"><ZoomIn size={20}/></button>
-                    <button onClick={() => setView(v => ({...v, scale: v.scale * 0.8}))} className="p-2 hover:bg-neutral-800 rounded text-neutral-300"><ZoomOut size={20}/></button>
-                    <button onClick={fitToScreen} className="p-2 hover:bg-neutral-800 rounded text-blue-500"><Maximize2 size={20}/></button>
+                <div className="bg-[var(--bg-overlay)] backdrop-blur rounded-lg p-1 pointer-events-auto shadow-lg flex flex-col gap-1 border theme-border">
+                    <button onClick={() => setView(v => ({...v, scale: v.scale * 1.2}))} className="p-2 hover:opacity-70 rounded theme-text-secondary"><ZoomIn size={20}/></button>
+                    <button onClick={() => setView(v => ({...v, scale: v.scale * 0.8}))} className="p-2 hover:opacity-70 rounded theme-text-secondary"><ZoomOut size={20}/></button>
+                    <button onClick={fitToScreen} className="p-2 hover:opacity-70 rounded text-blue-500"><Maximize2 size={20}/></button>
                 </div>
                 </div>
                 
@@ -3010,40 +3010,40 @@ const ShapeScanner = () => {
                         <ScanLine size={14} /> Auto-Detect
                     </button>
 
-                    <div className="bg-black/80 backdrop-blur rounded-lg p-3 pointer-events-auto shadow-lg flex flex-col gap-3 border border-neutral-800 w-44">
+                    <div className="bg-[var(--bg-overlay)] backdrop-blur rounded-lg p-3 pointer-events-auto shadow-lg flex flex-col gap-3 border theme-border w-44">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-neutral-400 flex items-center gap-2"><Pipette size={12}/> Paper</span>
+                            <span className="text-xs font-bold theme-text-secondary flex items-center gap-2"><Pipette size={12}/> Paper</span>
                             <div className="flex items-center gap-2">
                                 <div 
-                                    className="w-5 h-5 rounded-full border border-neutral-600 shadow-inner" 
+                                    className="w-5 h-5 rounded-full border theme-border shadow-inner" 
                                     style={{backgroundColor: `rgb(${paperColor.r},${paperColor.g},${paperColor.b})`}} 
                                 />
                                 <button 
                                     onClick={() => setIsPickingPaperColor(!isPickingPaperColor)}
-                                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isPickingPaperColor ? 'bg-amber-500 text-black' : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'}`}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isPickingPaperColor ? 'bg-amber-500 text-black' : 'theme-bg-tertiary theme-text-secondary hover:opacity-70'}`}
                                 >
                                     {isPickingPaperColor ? 'Tap Paper' : 'Pick'}
                                 </button>
                             </div>
                         </div>
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-neutral-400 flex items-center gap-2"><Palette size={12}/> B&W</span>
+                            <span className="text-xs font-bold theme-text-secondary flex items-center gap-2"><Palette size={12}/> B&W</span>
                             <button 
                                 onClick={() => setCalMonochrome(!calMonochrome)}
-                                className={`w-8 h-4 rounded-full relative transition-colors ${calMonochrome ? 'bg-blue-600' : 'bg-neutral-700'}`}
+                                className={`w-8 h-4 rounded-full relative transition-colors ${calMonochrome ? 'bg-blue-600' : 'bg-[var(--bg-tertiary)]'}`}
                             >
                                 <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${calMonochrome ? 'left-4.5' : 'left-0.5'}`} />
                             </button>
                         </div>
                         <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-neutral-400">
+                            <div className="flex justify-between text-xs theme-text-secondary">
                                 <span className="flex items-center gap-1"><Sun size={12} /> Contrast</span>
                                 <span>{calContrast}%</span>
                             </div>
                             <input 
                                 type="range" min="25" max="300" value={calContrast} 
                                 onChange={(e) => setCalContrast(Number(e.target.value))}
-                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                className="w-full h-1.5 bg-[var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer accent-blue-500"
                             />
                         </div>
                     </div>
@@ -3056,28 +3056,28 @@ const ShapeScanner = () => {
                 </div>
             </div>
 
-            <div className="w-full bg-neutral-900 p-4 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.5)] border-t border-neutral-800 shrink-0 z-20">
+            <div className="w-full theme-bg-secondary p-4 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)] border-t theme-border shrink-0 z-20">
                 <div className="flex gap-3 mb-4">
                     <div className="flex flex-col gap-1 w-24 shrink-0">
-                        <label className="text-[10px] text-neutral-500 uppercase font-bold flex justify-between items-center mb-1">
+                        <label className="text-[10px] theme-text-muted uppercase font-bold flex justify-between items-center mb-1">
                             Format
-                            <button onClick={toggleOrientation} className="text-neutral-400 hover:text-white transition-colors bg-neutral-800 p-1 rounded"><RotateCcw size={10} /></button>
+                            <button onClick={toggleOrientation} className="theme-text-secondary hover:theme-text-primary transition-colors theme-bg-tertiary p-1 rounded"><RotateCcw size={10} /></button>
                         </label>
                         <div className="flex flex-col gap-1.5">
-                            <button onClick={() => applyPreset(210, 297)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 px-2 py-1.5 rounded text-xs flex items-center gap-2 text-neutral-300 transition-colors"><FileText size={12}/> A4</button>
-                            <button onClick={() => applyPreset(215.9, 279.4)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 px-2 py-1.5 rounded text-xs flex items-center gap-2 text-neutral-300 transition-colors"><FileText size={12}/> Letter</button>
-                            <button onClick={() => applyPreset(85.6, 53.98)} className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 px-2 py-1.5 rounded text-xs flex items-center gap-2 text-neutral-300 transition-colors"><CreditCard size={12}/> Card</button>
+                            <button onClick={() => applyPreset(210, 297)} className="theme-bg-tertiary hover:opacity-80 border theme-border px-2 py-1.5 rounded text-xs flex items-center gap-2 theme-text-secondary transition-colors"><FileText size={12}/> A4</button>
+                            <button onClick={() => applyPreset(215.9, 279.4)} className="theme-bg-tertiary hover:opacity-80 border theme-border px-2 py-1.5 rounded text-xs flex items-center gap-2 theme-text-secondary transition-colors"><FileText size={12}/> Letter</button>
+                            <button onClick={() => applyPreset(85.6, 53.98)} className="theme-bg-tertiary hover:opacity-80 border theme-border px-2 py-1.5 rounded text-xs flex items-center gap-2 theme-text-secondary transition-colors"><CreditCard size={12}/> Card</button>
                         </div>
                     </div>
 
                     <div className="flex-1 flex gap-3">
                         <div className="flex-1">
-                            <label className="text-[10px] text-neutral-500 uppercase font-bold mb-1 block">Width (mm)</label>
-                            <input type="number" value={paperWidth} onChange={e => setPaperWidth(Number(e.target.value))} className="w-full bg-black border border-neutral-700 rounded-lg p-3 text-white font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
+                            <label className="text-[10px] theme-text-muted uppercase font-bold mb-1 block">Width (mm)</label>
+                            <input type="number" value={paperWidth} onChange={e => setPaperWidth(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
                         </div>
                         <div className="flex-1">
-                            <label className="text-[10px] text-neutral-500 uppercase font-bold mb-1 block">Height (mm)</label>
-                            <input type="number" value={paperHeight} onChange={e => setPaperHeight(Number(e.target.value))} className="w-full bg-black border border-neutral-700 rounded-lg p-3 text-white font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
+                            <label className="text-[10px] theme-text-muted uppercase font-bold mb-1 block">Height (mm)</label>
+                            <input type="number" value={paperHeight} onChange={e => setPaperHeight(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
                         </div>
                     </div>
                 </div>
