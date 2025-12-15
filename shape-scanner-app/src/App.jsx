@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp, HelpCircle, ChevronLeft, ChevronRight, BookOpen, Circle } from 'lucide-react';
+import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp, HelpCircle, ChevronLeft, ChevronRight, BookOpen, Circle, Printer, Target, Crosshair, Ruler, Grid3X3, Zap } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -1154,6 +1154,12 @@ const ShapeScanner = () => {
   // --- SPLASH STATE ---
   const [showSplash, setShowSplash] = useState(true);
 
+  // --- SCAN MODE STATE ---
+  const [showModeSelect, setShowModeSelect] = useState(true); // Show mode selection after splash
+  const [scanMode, setScanMode] = useState('quick'); // 'quick' or 'precision'
+  const [calibrationSize, setCalibrationSize] = useState('a4'); // 'a4', 'letter', 'card'
+  const [showCalibrationPrint, setShowCalibrationPrint] = useState(false); // Show calibration template print dialog
+
   // --- TUTORIAL STATE ---
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -1174,15 +1180,15 @@ const ShapeScanner = () => {
     localStorage.setItem('shapescanner_dark_theme', isDarkTheme.toString());
   }, [isDarkTheme]);
 
-  // Check if first time user and show tutorial after splash
+  // Check if first time user and show tutorial after splash AND mode selection
   useEffect(() => {
-    if (!showSplash && showTutorialOnStart) {
+    if (!showSplash && !showModeSelect && !showCalibrationPrint && showTutorialOnStart) {
       const hasSeenTutorial = localStorage.getItem('shapescanner_tutorial_seen');
       if (!hasSeenTutorial) {
         setShowTutorial(true);
       }
     }
-  }, [showSplash, showTutorialOnStart]);
+  }, [showSplash, showModeSelect, showCalibrationPrint, showTutorialOnStart]);
 
   // Save tutorial preference to localStorage
   useEffect(() => {
@@ -2848,13 +2854,190 @@ const ShapeScanner = () => {
       return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
+  // Mode Selection Screen - Choose between Quick Scan and Precision Scan
+  if (showModeSelect) {
+    return (
+      <div data-theme={isDarkTheme ? 'dark' : 'light'} className="fixed inset-0 theme-bg-primary theme-text-primary font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-8">
+          <div className="text-center space-y-2 mb-4">
+            <h1 className="text-2xl font-bold theme-text-primary">Choose Scan Mode</h1>
+            <p className="theme-text-secondary text-sm max-w-[280px] mx-auto">
+              Select how you want to scan your objects
+            </p>
+          </div>
+
+          <div className="w-full max-w-sm space-y-4">
+            {/* Quick Scan Option */}
+            <button
+              onClick={() => {
+                setScanMode('quick');
+                setShowModeSelect(false);
+              }}
+              className="w-full p-5 rounded-2xl theme-bg-secondary border-2 border-transparent hover:border-[var(--accent-blue)] transition-all group text-left"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-xl bg-[var(--accent-blue)] flex items-center justify-center shrink-0">
+                  <Zap size={28} className="text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg theme-text-primary mb-1">Quick Scan</h3>
+                  <p className="text-sm theme-text-secondary">
+                    Use any blank paper. Automatic corner detection with manual adjustment.
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs px-2 py-0.5 rounded bg-[var(--accent-blue)]/20 text-[var(--accent-blue)]">Fast</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-[var(--accent-blue)]/20 text-[var(--accent-blue)]">Easy</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Precision Scan Option */}
+            <button
+              onClick={() => {
+                setScanMode('precision');
+                setShowCalibrationPrint(true);
+              }}
+              className="w-full p-5 rounded-2xl theme-bg-secondary border-2 border-transparent hover:border-[var(--accent-emerald)] transition-all group text-left"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-xl bg-[var(--accent-emerald)] flex items-center justify-center shrink-0">
+                  <Target size={28} className="text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg theme-text-primary mb-1">Precision Scan</h3>
+                  <p className="text-sm theme-text-secondary">
+                    Print a calibration page with markers for perfect accuracy and ruler guides.
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs px-2 py-0.5 rounded bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]">Accurate</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-[var(--accent-emerald)]/20 text-[var(--accent-emerald)]">Rulers</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <p className="text-xs theme-text-muted text-center max-w-[240px]">
+            Precision mode requires printing a template. You can switch modes anytime.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Calibration Template Print Dialog
+  if (showCalibrationPrint) {
+    return (
+      <div data-theme={isDarkTheme ? 'dark' : 'light'} className="fixed inset-0 theme-bg-primary theme-text-primary font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col">
+        {/* Header with back button */}
+        <div className="flex items-center gap-3 p-4 theme-bg-secondary border-b theme-border shrink-0">
+          <button
+            onClick={() => {
+              setShowCalibrationPrint(false);
+              setShowModeSelect(true);
+            }}
+            className="p-2 rounded-lg theme-bg-tertiary hover:opacity-80 transition-colors"
+          >
+            <ChevronLeft size={20} className="theme-text-primary" />
+          </button>
+          <h1 className="font-bold text-lg theme-text-primary">Calibration Template</h1>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 overflow-auto">
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--accent-emerald)] flex items-center justify-center mx-auto mb-4">
+              <Printer size={32} className="text-white" />
+            </div>
+            <h2 className="text-xl font-bold theme-text-primary">Print Calibration Page</h2>
+            <p className="theme-text-secondary text-sm max-w-[280px] mx-auto">
+              Select your paper size and print the template at 100% scale (no scaling).
+            </p>
+          </div>
+
+          {/* Size Selection */}
+          <div className="w-full max-w-sm space-y-3">
+            <label className="text-xs theme-text-secondary uppercase font-bold block">Paper Size</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setCalibrationSize('a4')}
+                className={`p-3 rounded-xl border-2 transition-all ${calibrationSize === 'a4' ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/10' : 'theme-border theme-bg-secondary'}`}
+              >
+                <div className="font-bold theme-text-primary text-sm">A4</div>
+                <div className="text-xs theme-text-muted">210 × 297mm</div>
+              </button>
+              <button
+                onClick={() => setCalibrationSize('letter')}
+                className={`p-3 rounded-xl border-2 transition-all ${calibrationSize === 'letter' ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/10' : 'theme-border theme-bg-secondary'}`}
+              >
+                <div className="font-bold theme-text-primary text-sm">Letter</div>
+                <div className="text-xs theme-text-muted">8.5 × 11"</div>
+              </button>
+              <button
+                onClick={() => setCalibrationSize('card')}
+                className={`p-3 rounded-xl border-2 transition-all ${calibrationSize === 'card' ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald)]/10' : 'theme-border theme-bg-secondary'}`}
+              >
+                <div className="font-bold theme-text-primary text-sm">Card</div>
+                <div className="text-xs theme-text-muted">85.6 × 54mm</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Template Preview Placeholder */}
+          <div className="w-full max-w-sm aspect-[210/297] theme-bg-secondary rounded-xl border-2 theme-border flex items-center justify-center relative overflow-hidden">
+            <div className="absolute inset-2 border-4 border-dashed theme-border rounded-lg flex items-center justify-center">
+              <div className="text-center">
+                <Grid3X3 size={48} className="theme-text-muted mx-auto mb-2" />
+                <p className="text-sm theme-text-muted">Template Preview</p>
+                <p className="text-xs theme-text-muted mt-1">
+                  {calibrationSize === 'a4' ? '210 × 297mm' : calibrationSize === 'letter' ? '215.9 × 279.4mm' : '85.6 × 54mm'}
+                </p>
+              </div>
+            </div>
+            {/* Corner markers preview */}
+            <div className="absolute top-3 left-3 w-6 h-6 border-l-4 border-t-4 border-[var(--accent-emerald)]"></div>
+            <div className="absolute top-3 right-3 w-6 h-6 border-r-4 border-t-4 border-[var(--accent-emerald)]"></div>
+            <div className="absolute bottom-3 left-3 w-6 h-6 border-l-4 border-b-4 border-[var(--accent-emerald)]"></div>
+            <div className="absolute bottom-3 right-3 w-6 h-6 border-r-4 border-b-4 border-[var(--accent-emerald)]"></div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="w-full max-w-sm space-y-3">
+            <button
+              onClick={() => {
+                // TODO: Generate and download/print calibration template
+                alert('Calibration template generation coming soon!');
+              }}
+              className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
+            >
+              <Download size={20} /> Download Template
+            </button>
+            <button
+              onClick={() => {
+                setShowCalibrationPrint(false);
+                setShowModeSelect(false);
+              }}
+              className="w-full py-3 rounded-xl theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary font-medium flex items-center justify-center gap-2 transition-all"
+            >
+              Continue Without Printing
+            </button>
+          </div>
+
+          <p className="text-xs theme-text-muted text-center max-w-[260px]">
+            Print at 100% scale. Do not use "fit to page" option.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-theme={isDarkTheme ? 'dark' : 'light'} className="fixed inset-0 theme-bg-primary theme-text-primary font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col">
       
       {/* Header */}
       <div className="flex items-center justify-between p-4 theme-bg-secondary border-b theme-border z-10 shrink-0">
         <div className="flex items-center gap-2">
-           <RefreshCcw className="text-[var(--accent-blue)]" size={20} onClick={() => setStep('capture')}/>
+           <RefreshCcw className="text-[var(--accent-blue)]" size={20} onClick={() => { setStep('capture'); setShowModeSelect(true); }}/>
            <h1 className="font-bold text-lg tracking-tight theme-text-primary">ShapeScanner</h1>
         </div>
         <div className="flex items-center gap-2">
