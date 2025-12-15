@@ -2054,10 +2054,24 @@ const ShapeScanner = () => {
   
   // Reprocess polygon detection - regenerates mask and contours for a polygon's ROI with its settings
   const reprocessPolygonDetection = useCallback((polygonIndex) => {
-    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) return;
+    console.log('=== reprocessPolygonDetection START ===');
+    console.log('Requested polygonIndex:', polygonIndex, 'Total polygons:', detectedPolygons.length);
+    console.log('ALL polygon pixelBboxes:');
+    detectedPolygons.forEach((p, i) => {
+      console.log(`  Polygon ${i}: pixelBbox=`, p.pixelBbox, 'mm bbox=', p.bbox);
+    });
+    
+    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) {
+      console.log('Early exit - invalid state');
+      return;
+    }
     
     const poly = detectedPolygons[polygonIndex];
-    if (!poly.settings || !poly.pixelBbox) return;
+    console.log('USING polygon:', polygonIndex, 'pixelBbox:', JSON.stringify(poly.pixelBbox), 'mm bbox:', JSON.stringify(poly.bbox));
+    if (!poly.settings || !poly.pixelBbox) {
+      console.log('Early exit - no settings or pixelBbox');
+      return;
+    }
     
     const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
     const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
