@@ -1048,7 +1048,7 @@ const ShapeScanner = () => {
   // Update settings based on current scope
   const updateSetting = useCallback((key, value) => {
     // Detection settings require reprocessPolygonDetection, vector settings require reprocessPolygon
-    const detectionSettingKeys = ['threshold', 'shadowRemoval', 'noiseFilter', 'scanStep', 'invertResult'];
+    const detectionSettingKeys = ['threshold', 'shadowRemoval', 'noiseFilter', 'scanStep'];
     const isDetectionSetting = detectionSettingKeys.includes(key);
     
     if (settingsScope === 'polygon' && detectedPolygons.length > 0) {
@@ -2042,24 +2042,15 @@ const ShapeScanner = () => {
   
   // Reprocess polygon detection - regenerates mask and contours for a polygon's ROI with its settings
   const reprocessPolygonDetection = useCallback((polygonIndex) => {
-    console.log('reprocessPolygonDetection called for polygon:', polygonIndex);
-    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) {
-      console.log('Early return - buffer:', !!unwarpedBufferRef.current, 'index:', polygonIndex, 'length:', detectedPolygons.length);
-      return;
-    }
+    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) return;
     
     const poly = detectedPolygons[polygonIndex];
-    if (!poly.settings || !poly.pixelBbox) {
-      console.log('Early return - settings:', !!poly.settings, 'pixelBbox:', poly.pixelBbox);
-      return;
-    }
-    
-    console.log('Polygon pixelBbox:', poly.pixelBbox);
-    console.log('Polygon mm bbox:', poly.bbox);
+    if (!poly.settings || !poly.pixelBbox) return;
     
     const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
-    console.log('Buffer dimensions:', bufWidth, 'x', bufHeight);
-    const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, invertResult: polyInvert, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
+    const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
+    // Always use global invertResult - it's a fundamental detection mode, not per-polygon
+    const polyInvert = invertResult;
     
     // Get reference color from state
     const refR = calculatedRefColor.r || 255;
@@ -2075,12 +2066,7 @@ const ShapeScanner = () => {
     const roiWidth = roiMaxX - roiMinX + 1;
     const roiHeight = roiMaxY - roiMinY + 1;
     
-    if (roiWidth < 5 || roiHeight < 5) {
-      console.log('ROI too small:', roiWidth, 'x', roiHeight);
-      return;
-    }
-    
-    console.log('ROI:', { roiMinX, roiMaxX, roiMinY, roiMaxY, roiWidth, roiHeight });
+    if (roiWidth < 5 || roiHeight < 5) return;
     
     // Create mask for ROI using polygon's settings
     const roiMask = new Uint8Array(roiWidth * roiHeight);
@@ -2137,12 +2123,7 @@ const ShapeScanner = () => {
     // Label connected components in ROI
     const { labels, components } = ContourTracer.labelComponents(roiMask, roiWidth, roiHeight);
     
-    console.log('ROI components found:', components.length, components.map(c => ({ label: c.label, size: c.size, bbox: c.bbox })));
-    
-    if (components.length === 0) {
-      console.log('No components found in ROI mask');
-      return;
-    }
+    if (components.length === 0) return;
     
     // Get the largest component
     components.sort((a, b) => b.size - a.size);
@@ -2158,11 +2139,7 @@ const ShapeScanner = () => {
     
     // Trace boundary in ROI pixel coordinates
     const boundary = ContourTracer.traceBoundary4(roiMask, roiWidth, roiHeight, startPixel.x, startPixel.y, mainComponent.label, labels);
-    console.log('Boundary traced:', boundary.length, 'points. First few:', boundary.slice(0, 3));
-    if (boundary.length < 5) {
-      console.log('Boundary too short');
-      return;
-    }
+    if (boundary.length < 5) return;
     
     // Simplify contour
     const simplified = ContourTracer.simplifyContour(boundary, polyScan);
@@ -2182,13 +2159,6 @@ const ShapeScanner = () => {
     
     // Convert to mm and ensure CCW winding for outer contour
     let outerPoints = simplified.map(roiPixelToGlobalMm);
-    console.log('Converted to mm:', outerPoints.length, 'points. First few:', outerPoints.slice(0, 3));
-    console.log('Bounds of points:', {
-      minX: Math.min(...outerPoints.map(p => p.x)),
-      maxX: Math.max(...outerPoints.map(p => p.x)),
-      minY: Math.min(...outerPoints.map(p => p.y)),
-      maxY: Math.max(...outerPoints.map(p => p.y))
-    });
     if (ContourTracer.signedArea(outerPoints) < 0) {
       outerPoints = ContourTracer.reverseContour(outerPoints);
     }
@@ -2306,7 +2276,7 @@ const ShapeScanner = () => {
       setObjectDims({ width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY });
       setDetectedShapeType(detected);
     }
-  }, [detectedPolygons, selectedPolygonIndex, calculatedRefColor, segmentMode, paperWidth, paperHeight]);
+  }, [detectedPolygons, selectedPolygonIndex, calculatedRefColor, segmentMode, paperWidth, paperHeight, invertResult]);
   
   // Effect to reprocess polygons when their settings change
   useEffect(() => {
@@ -3321,31 +3291,6 @@ const ShapeScanner = () => {
                                                 }} 
                                                 className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                             />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-                                                <span>Invert</span>
-                                                <span className="text-emerald-400">{getSelectedPolygonSettings().invertResult ? 'ON' : 'OFF'}</span>
-                                            </div>
-                                            <button 
-                                                onClick={() => {
-                                                    const newValue = !getSelectedPolygonSettings().invertResult;
-                                                    setDetectedPolygons(prev => {
-                                                        const updated = [...prev];
-                                                        if (updated[selectedPolygonIndex]) {
-                                                            updated[selectedPolygonIndex] = {
-                                                                ...updated[selectedPolygonIndex],
-                                                                settings: { ...updated[selectedPolygonIndex].settings, invertResult: newValue },
-                                                                needsDetectionReprocess: true
-                                                            };
-                                                        }
-                                                        return updated;
-                                                    });
-                                                }}
-                                                className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().invertResult ? 'bg-purple-600 border-purple-500 text-white' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
-                                            >
-                                                {getSelectedPolygonSettings().invertResult ? <ToggleRight size={12}/> : <ToggleLeft size={12}/>} {getSelectedPolygonSettings().invertResult ? 'On' : 'Off'}
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
