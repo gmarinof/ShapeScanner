@@ -585,10 +585,29 @@ const ShapeScanner = () => {
     return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
   }, [detectedPolygons, selectedPolygonIndex, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
-  // Update a specific polygon's settings
+  // Update polygon settings - only curveSmoothing and smartRefine work per-polygon
+  // Other settings (threshold, noise, shadow, invert, scanStep) are global only
   const updatePolygonSetting = useCallback((key, value) => {
-    if (detectedPolygons.length === 0) {
-      // No polygons yet, update global settings
+    // Per-polygon settings (curveSmoothing and smartRefine only)
+    const perPolygonSettings = ['curveSmoothing', 'smartRefine'];
+    
+    if (perPolygonSettings.includes(key) && detectedPolygons.length > 0) {
+      setDetectedPolygons(prev => {
+        const updated = [...prev];
+        if (updated[selectedPolygonIndex]) {
+          updated[selectedPolygonIndex] = {
+            ...updated[selectedPolygonIndex],
+            settings: {
+              ...updated[selectedPolygonIndex].settings,
+              [key]: value
+            },
+            needsReprocess: true
+          };
+        }
+        return updated;
+      });
+    } else {
+      // Global settings - update state and trigger full reprocessing
       switch(key) {
         case 'threshold': setThreshold(value); break;
         case 'scanStep': setScanStep(value); break;
@@ -598,23 +617,7 @@ const ShapeScanner = () => {
         case 'smartRefine': setSmartRefine(value); break;
         case 'invertResult': setInvertResult(value); break;
       }
-      return;
     }
-    
-    setDetectedPolygons(prev => {
-      const updated = [...prev];
-      if (updated[selectedPolygonIndex]) {
-        updated[selectedPolygonIndex] = {
-          ...updated[selectedPolygonIndex],
-          settings: {
-            ...updated[selectedPolygonIndex].settings,
-            [key]: value
-          },
-          needsReprocess: true
-        };
-      }
-      return updated;
-    });
   }, [detectedPolygons.length, selectedPolygonIndex]);
   
   // Reset selected polygon to global defaults
@@ -957,6 +960,20 @@ const ShapeScanner = () => {
   };
 
 
+  // --- POINT IN POLYGON TEST ---
+  const pointInPolygon = useCallback((point, polygon) => {
+    if (!polygon || polygon.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      if (((yi > point.y) !== (yj > point.y)) && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }, []);
+
   // --- PROCESSING STEP INTERACTION ---
   const handleProcessStart = (e) => {
     const rect = processCanvasRef.current.getBoundingClientRect();
@@ -979,6 +996,32 @@ const ShapeScanner = () => {
         }
         return;
     }
+    
+    // Check if tapped on a polygon (tap-to-select)
+    if (detectedPolygons.length > 0 && unwarpedBufferRef.current) {
+      const { width: bufWidth, height: bufHeight } = unwarpedBufferRef.current;
+      // Convert pixel coords to mm coords for hit testing
+      const mmX = (px / bufWidth) * paperWidth;
+      const mmY = ((bufHeight - py) / bufHeight) * paperHeight;
+      const clickPoint = { x: mmX, y: mmY };
+      
+      // Check polygons in reverse order (so topmost/smallest is selected first)
+      for (let i = detectedPolygons.length - 1; i >= 0; i--) {
+        const poly = detectedPolygons[i];
+        if (pointInPolygon(clickPoint, poly.outer)) {
+          setSelectedPolygonIndex(i);
+          setProcessedPath(poly.outer);
+          setDetectedShapeType(poly.type);
+          const minX = Math.min(...poly.outer.map(p => p.x));
+          const maxX = Math.max(...poly.outer.map(p => p.x));
+          const minY = Math.min(...poly.outer.map(p => p.y));
+          const maxY = Math.max(...poly.outer.map(p => p.y));
+          setObjectDims({ width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY });
+          return; // Don't start drag selection if we selected a polygon
+        }
+      }
+    }
+    
     setDragStart({ x: px, y: py });
     setSelectionBox(null);
   };
@@ -1386,133 +1429,20 @@ const ShapeScanner = () => {
 
   }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, selectedPolygonIndex]);
 
-  // Reprocess a single polygon with its own settings - full re-detection from pixel data
+  // Reprocess a single polygon - applies smoothing and shape fitting only
   const reprocessPolygon = useCallback((polygonIndex) => {
-    if (!processCanvasRef.current || !sourcePixelData.current || !unwarpedBufferRef.current) return;
     if (polygonIndex < 0 || polygonIndex >= detectedPolygons.length) return;
     
     const poly = detectedPolygons[polygonIndex];
-    if (!poly.settings || !poly.pixelBbox) return;
+    if (!poly.settings) return;
     
-    const { threshold: polyThresh, scanStep: polyScan, curveSmoothing: polyCurve, 
-            noiseFilter: polyNoise, shadowRemoval: polyShadow, smartRefine: polySmartRefine, 
-            invertResult: polyInvert } = poly.settings;
+    const { curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
     
-    const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
-    const { minX: pxMinX, maxX: pxMaxX, minY: pxMinY, maxY: pxMaxY } = poly.pixelBbox;
-    
-    // Add padding around the ROI
-    const pad = 5;
-    const roiMinX = Math.max(0, pxMinX - pad);
-    const roiMaxX = Math.min(bufWidth - 1, pxMaxX + pad);
-    const roiMinY = Math.max(0, pxMinY - pad);
-    const roiMaxY = Math.min(bufHeight - 1, pxMaxY + pad);
-    const roiW = roiMaxX - roiMinX + 1;
-    const roiH = roiMaxY - roiMinY + 1;
-    
-    // Get reference color (same as main processing)
-    let refR = 255, refG = 255, refB = 255;
-    if (segmentMode === 'auto') {
-      refR = calculatedRefColor.r; refG = calculatedRefColor.g; refB = calculatedRefColor.b;
-    } else {
-      refR = targetColor.r; refG = targetColor.g; refB = targetColor.b;
-    }
-    
-    // Create mask for ROI using polygon's settings
-    const roiMask = new Uint8Array(roiW * roiH);
-    
-    for (let y = 0; y < roiH; y++) {
-      for (let x = 0; x < roiW; x++) {
-        const bufX = roiMinX + x;
-        const bufY = roiMinY + y;
-        const idx = (bufY * bufWidth + bufX) * 4;
-        
-        const r = rawBuffer[idx];
-        const g = rawBuffer[idx + 1];
-        const b = rawBuffer[idx + 2];
-        const a = rawBuffer[idx + 3];
-        
-        if (a === 0) {
-          roiMask[y * roiW + x] = 0;
-          continue;
-        }
-        
-        // Apply noise filter
-        let testR = r, testG = g, testB = b;
-        if (polyNoise > 0 && bufX > 0 && bufX < bufWidth - 1 && bufY > 0 && bufY < bufHeight - 1) {
-          let nr = r, ng = g, nb = b;
-          const neighbors = [
-            [(bufY * bufWidth + bufX - 1) * 4],
-            [(bufY * bufWidth + bufX + 1) * 4],
-            [((bufY - 1) * bufWidth + bufX) * 4],
-            [((bufY + 1) * bufWidth + bufX) * 4]
-          ];
-          neighbors.forEach(nIdx => {
-            nr += rawBuffer[nIdx]; ng += rawBuffer[nIdx + 1]; nb += rawBuffer[nIdx + 2];
-          });
-          testR = nr / 5; testG = ng / 5; testB = nb / 5;
-        }
-        
-        const dist = Math.sqrt((refR - testR) ** 2 + (refG - testG) ** 2 + (refB - testB) ** 2);
-        let isObject = false;
-        
-        if (segmentMode === 'auto' || segmentMode === 'manual-bg') { isObject = dist > polyThresh; }
-        else if (segmentMode === 'manual-obj') { isObject = dist < polyThresh; }
-        if (polyInvert) isObject = !isObject;
-        
-        roiMask[y * roiW + x] = isObject ? 1 : 0;
-      }
-    }
-    
-    // Apply shadow removal (erosion)
-    if (polyShadow > 0) {
-      const erosionIterations = Math.floor(polyShadow);
-      for (let iter = 0; iter < erosionIterations; iter++) {
-        const erodedMask = new Uint8Array(roiW * roiH);
-        for (let y = 1; y < roiH - 1; y++) {
-          for (let x = 1; x < roiW - 1; x++) {
-            const i = y * roiW + x;
-            if (roiMask[i] === 1) {
-              if (roiMask[i - 1] === 0 || roiMask[i + 1] === 0 || roiMask[i - roiW] === 0 || roiMask[i + roiW] === 0) {
-                erodedMask[i] = 0;
-              } else {
-                erodedMask[i] = 1;
-              }
-            }
-          }
-        }
-        roiMask.set(erodedMask);
-      }
-    }
-    
-    // Detect polygons in ROI
-    const roiPolygons = ContourTracer.detectPolygons(roiMask, roiW, roiH, paperWidth, paperHeight, polyScan);
-    
-    if (roiPolygons.length === 0) {
-      // No shape found with these settings - keep old contour but mark as processed
-      setDetectedPolygons(prev => {
-        const updated = [...prev];
-        updated[polygonIndex] = { ...updated[polygonIndex], needsReprocess: false };
-        return updated;
-      });
-      return;
-    }
-    
-    // Take the largest polygon found in ROI
-    const mainPoly = roiPolygons.reduce((a, b) => a.size > b.size ? a : b);
-    
-    // Adjust coordinates back to full image space
-    const offsetXmm = (roiMinX / bufWidth) * paperWidth;
-    const offsetYmm = ((bufHeight - roiMaxY - 1) / bufHeight) * paperHeight;
-    
-    let outerPoints = mainPoly.outer.map(p => ({
-      x: p.x + offsetXmm,
-      y: p.y - offsetYmm + (roiH / bufHeight) * paperHeight
-    }));
-    
+    // Use raw contour data if available
+    let outerPoints = poly.rawOuter ? [...poly.rawOuter] : [...poly.outer];
     let detected = 'poly';
     
-    // Apply smart refine and smoothing
+    // Apply smoothing and shape fitting
     if (polySmartRefine && outerPoints.length > 0) {
       const circleFit = ShapeFitter.fitCircle(outerPoints);
       if (circleFit) {
@@ -1528,14 +1458,11 @@ const ShapeScanner = () => {
     }
     
     // Process holes
-    const refinedHoles = mainPoly.holes.map(hole => {
-      let holePoints = hole.map(p => ({
-        x: p.x + offsetXmm,
-        y: p.y - offsetYmm + (roiH / bufHeight) * paperHeight
-      }));
-      
+    const rawHoles = poly.rawHoles || poly.holes;
+    const refinedHoles = rawHoles.map(hole => {
+      let holePoints = [...hole];
       if (polySmartRefine) {
-        const holeFit = ShapeFitter.fitCircle(holePoints);
+        const holeFit = ShapeFitter.fitCircle(hole);
         if (holeFit) {
           holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
         } else {
@@ -1556,8 +1483,6 @@ const ShapeScanner = () => {
         ...updated[polygonIndex],
         outer: outerPoints,
         holes: refinedHoles,
-        rawOuter: mainPoly.outer,
-        rawHoles: mainPoly.holes,
         type: detected,
         needsReprocess: false
       };
@@ -1574,7 +1499,7 @@ const ShapeScanner = () => {
       setObjectDims({ width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY });
       setDetectedShapeType(detected);
     }
-  }, [detectedPolygons, selectedPolygonIndex, paperWidth, paperHeight, segmentMode, targetColor, calculatedRefColor]);
+  }, [detectedPolygons, selectedPolygonIndex]);
   
   // Effect to reprocess polygons when their settings change
   useEffect(() => {
