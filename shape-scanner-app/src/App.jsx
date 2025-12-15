@@ -772,9 +772,9 @@ class EdgeDetector {
     // Validate: corners should form a reasonable quadrilateral
     const corners = [tl, tr, br, bl];
     
-    // Check minimum area (at least 5% of image area)
+    // Check minimum area (at least 1% of image area - reduced for flexibility)
     const area = this.polygonArea(corners);
-    const minArea = width * height * 0.05;
+    const minArea = width * height * 0.01;
     console.log('Corner validation - area:', area, 'minArea:', minArea);
     if (area < minArea) {
       console.log('Area too small');

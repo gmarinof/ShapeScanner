@@ -75,11 +75,13 @@ git push github main
   - `unwarpedBufferRef` stores the grayscale buffer for per-polygon ROI reprocessing
 - **Improved corner detection with Canny edge detection**:
   - New `EdgeDetector` class with Sobel gradient computation
-  - Gaussian blur for noise reduction before edge detection
+  - Gaussian blur with mirror boundary handling
   - Non-maximum suppression for edge thinning
-  - Canny-style hysteresis thresholding (double threshold)
-  - Contour tracing and Douglas-Peucker simplification
+  - Canny-style hysteresis thresholding (multiple sensitivity levels)
+  - Moore boundary contour tracing (follows edges in order)
+  - Douglas-Peucker contour simplification
   - Quadrilateral fitting with convexity and area validation
+  - Contrast adjustment now applies to detection (not just display)
   - Falls back to color distance + Otsu thresholding if edge detection fails
   - Extended contrast slider range (25%-300%) for better visibility
   - Paper color picker - tap "Pick" then tap on the paper to select its color
