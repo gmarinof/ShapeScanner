@@ -137,6 +137,10 @@ git push github main
   - What the colors mean (bright = object, dark = background)
   - How to adjust threshold and use invert
   - Visual legend for color interpretation
+  - **Heatmap Contrast slider** (50%-300%) to adjust visibility of detection differences
 - **Per-polygon Invert toggle**: Each shape can now have independent invert setting in Advanced settings
   - Useful when individual shapes need opposite detection from global setting
   - Triggers re-detection with per-shape invert value
+- **Early polygon initialization**: Polygons are now detected immediately when entering process view
+  - Previously only initialized when switching to Contour mode
+  - Per-polygon settings now available from the start

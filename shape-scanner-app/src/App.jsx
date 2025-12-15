@@ -2263,7 +2263,8 @@ const ShapeScanner = () => {
   const [objectDims, setObjectDims] = useState(null);
   const [showMask, setShowMask] = useState(false); 
   const [invertResult, setInvertResult] = useState(false); 
-  const [viewMode, setViewMode] = useState('original'); 
+  const [viewMode, setViewMode] = useState('original');
+  const [heatmapContrast, setHeatmapContrast] = useState(100); 
   const [detectedShapeType, setDetectedShapeType] = useState(null);
   
   // Multi-polygon state with per-polygon settings
@@ -3094,7 +3095,9 @@ const ShapeScanner = () => {
                 data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 0;
             } else if (viewMode === 'heatmap') {
                 const dist = Math.sqrt((refR-r)**2 + (refG-g)**2 + (refB-b)**2);
-                const intensity = Math.min(255, dist * 3); 
+                // Apply heatmap contrast (100 = normal, higher = more contrast)
+                const contrastFactor = heatmapContrast / 100;
+                const intensity = Math.min(255, Math.max(0, ((dist * 3 / 255 - 0.5) * contrastFactor + 0.5) * 255));
                 data[idx] = intensity; data[idx+1] = intensity > 128 ? 255 - intensity : 0; data[idx+2] = 0; data[idx+3] = 255; 
             } else {
                 // Processed View
@@ -3120,8 +3123,9 @@ const ShapeScanner = () => {
     
     unwarpedBufferRef.current = { width: targetW, height: targetH, data: rawBuffer };
 
-    // Multi-polygon detection with holes
-    if (viewMode !== 'original') {
+    // Multi-polygon detection with holes - always run to initialize polygon settings
+    // (Previously only ran when viewMode !== 'original', but that delayed settings initialization)
+    {
         // In precision mode, mask out the corner marker regions
         if (scanMode === 'precision') {
           const scanArea = getCalibrationScanArea(calibrationSize);
@@ -3258,9 +3262,6 @@ const ShapeScanner = () => {
           setProcessedPath([]); setObjectDims(null); setDetectedShapeType(null);
           setDetectedPolygons([]);
         }
-    } else {
-        setProcessedPath([]); setObjectDims(null); setDetectedShapeType(null);
-        setDetectedPolygons([]);
     }
 
     const endTime = performance.now();
@@ -3272,7 +3273,7 @@ const ShapeScanner = () => {
     
     setIsProcessing(false);
 
-  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, scanMode, calibrationSize]);
+  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, scanMode, calibrationSize, heatmapContrast]);
 
   // Reprocess a single polygon - applies smoothing and shape fitting only
   const reprocessPolygon = useCallback((polygonIndex) => {
@@ -4678,6 +4679,18 @@ const ShapeScanner = () => {
                                         <div className="w-3 h-3 rounded bg-gray-800"></div>
                                         <span>Background (ignored)</span>
                                     </div>
+                                </div>
+                                <div className="mt-3 space-y-1.5">
+                                    <div className="flex justify-between text-[10px] uppercase font-bold text-orange-300/80 tracking-wider">
+                                        <span>Heatmap Contrast</span>
+                                        <span className="text-orange-200">{heatmapContrast}%</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="50" max="300" 
+                                        value={heatmapContrast} 
+                                        onChange={(e) => setHeatmapContrast(Number(e.target.value))} 
+                                        className="w-full h-1.5 bg-orange-950 rounded-lg appearance-none cursor-pointer accent-orange-500" 
+                                    />
                                 </div>
                                 <p className="text-[10px] text-orange-300/60 mt-2 italic">
                                     Adjust <b>Threshold</b> to include more (lower) or less (higher). Use <b>Invert</b> if colors are reversed. Tap <b>Ref</b> to pick background color.
