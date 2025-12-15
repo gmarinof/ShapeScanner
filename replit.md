@@ -64,5 +64,9 @@ git push github main
 
 ### Dec 15, 2024
 - **Tap-to-select polygons**: Click/tap directly on shapes in the canvas to select them
-- Simplified per-polygon settings to only affect smoothing and shape fitting
-- Global settings (threshold, noise filter, shadow removal, invert) now affect all polygons
+- **Settings scope toggle**: Global/Per-Shape toggle to choose editing mode
+  - Global mode: Changes apply to global settings (affects new processing)
+  - Per-Shape mode: Changes apply only to the selected polygon
+  - "Apply to All" button syncs global settings to all detected shapes
+  - Reset button restores selected shape to global settings
+- All settings (threshold, noise, shadow, curve smooth, smart refine, invert) now available in both modes
