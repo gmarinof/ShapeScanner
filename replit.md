@@ -93,3 +93,9 @@ git push github main
   - Falls back to color distance + Otsu thresholding if edge detection fails
   - Extended contrast slider range (25%-300%) for better visibility
   - Paper color picker - tap "Pick" then tap on the paper to select its color
+- **Fixed per-polygon bbox preservation bug**: Each polygon now maintains correct pixelBbox
+  - Fixed bug where all polygons shared the same pixelBbox after re-detection
+  - Now always uses freshly calculated pixelBbox instead of preserving old one
+- **UI improvements**:
+  - Per-polygon settings now in collapsible "Advanced" menu to reduce clutter
+  - Added "Hotwave studio" branding to splash screen

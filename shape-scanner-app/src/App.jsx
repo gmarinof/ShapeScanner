@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move } from 'lucide-react';
+import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -962,6 +962,7 @@ const SplashScreen = ({ onFinish }) => {
                 SHAPE<span className="text-blue-500">SCANNER</span>
             </h1>
             <p className="text-neutral-500 text-xs mt-2 tracking-[0.3em] uppercase">Vectorization Engine</p>
+            <p className="absolute bottom-6 text-neutral-600 text-[10px] tracking-wider">Hotwave studio</p>
         </div>
     );
 };
@@ -981,6 +982,7 @@ const ShapeScanner = () => {
   
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [debugStats, setDebugStats] = useState({ mappedPixels: 0, matrixValid: false, processingTime: 0 });
 
   // Calibration
@@ -3222,14 +3224,24 @@ const ShapeScanner = () => {
                             </div>
                         </div>
                         
-                        {/* Shape Settings - Per-shape when polygons detected */}
+                        {/* Shape Settings - Per-shape when polygons detected (collapsible advanced menu) */}
                         {detectedPolygons.length > 0 && (
                             <div className="mt-4 pt-4 border-t border-neutral-800">
-                                <div className="flex items-center justify-between mb-3">
+                                <button 
+                                    onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                                    className="w-full flex items-center justify-between py-2 px-1 rounded-lg hover:bg-neutral-800/50 transition-all"
+                                >
                                     <div className="flex items-center gap-2">
                                         <Layers size={16} className="text-emerald-400"/>
                                         <span className="font-bold text-sm text-white">Shape {selectedPolygonIndex + 1} Settings</span>
+                                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider">(Advanced)</span>
                                     </div>
+                                    {showAdvancedSettings ? <ChevronUp size={16} className="text-neutral-400"/> : <ChevronDown size={16} className="text-neutral-400"/>}
+                                </button>
+                                
+                                {showAdvancedSettings && (
+                                <>
+                                <div className="flex items-center justify-end mt-2 mb-3">
                                     <button 
                                         onClick={resetPolygonToDefaults}
                                         className="px-2 py-1 rounded-lg flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-all"
@@ -3399,6 +3411,8 @@ const ShapeScanner = () => {
                                         </button>
                                     </div>
                                 </div>
+                                </>
+                                )}
                             </div>
                         )}
 
