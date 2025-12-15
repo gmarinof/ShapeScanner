@@ -1687,8 +1687,8 @@ class EdgeDetector {
         const w1 = legs[i].avgWidth, w2 = legs[j].avgWidth;
         const widthRatio = w1 > 0 && w2 > 0 ? Math.min(w1, w2) / Math.max(w1, w2) : 0;
         
-        // Must be close to perpendicular (within 5 degrees = 0.087 rad) and have consistent widths
-        if (angleDiff < 0.087 && widthRatio > 0.5 && angleDiff < bestAngleDiff) {
+        // Must be close to perpendicular (within 20 degrees = 0.35 rad) and have consistent widths
+        if (angleDiff < 0.35 && widthRatio > 0.3 && angleDiff < bestAngleDiff) {
           bestAngleDiff = angleDiff;
           bestPair = [legs[i], legs[j]];
         }
@@ -1702,8 +1702,8 @@ class EdgeDetector {
           const angle = this.angleBetweenLines(legs[i].line, legs[j].line);
           const angleDiff = Math.abs(angle - Math.PI / 2);
           
-          // Relaxed: within 10 degrees (0.175 rad)
-          if (angleDiff < 0.175 && angleDiff < bestAngleDiff) {
+          // Relaxed: within 30 degrees (0.52 rad)
+          if (angleDiff < 0.52 && angleDiff < bestAngleDiff) {
             bestAngleDiff = angleDiff;
             bestPair = [legs[i], legs[j]];
           }
