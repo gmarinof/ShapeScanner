@@ -3097,7 +3097,9 @@ const ShapeScanner = () => {
                 const dist = Math.sqrt((refR-r)**2 + (refG-g)**2 + (refB-b)**2);
                 // Apply heatmap contrast (100 = normal, higher = more contrast)
                 const contrastFactor = heatmapContrast / 100;
-                const intensity = Math.min(255, Math.max(0, ((dist * 3 / 255 - 0.5) * contrastFactor + 0.5) * 255));
+                // Inverted: uniform areas (paper) = bright, varied areas (objects) = dark
+                const rawIntensity = Math.min(255, Math.max(0, ((dist * 3 / 255 - 0.5) * contrastFactor + 0.5) * 255));
+                const intensity = 255 - rawIntensity; // Invert so paper=bright, object=dark
                 data[idx] = intensity; data[idx+1] = intensity > 128 ? 255 - intensity : 0; data[idx+2] = 0; data[idx+3] = 255; 
             } else {
                 // Processed View
@@ -4666,18 +4668,18 @@ const ShapeScanner = () => {
                                     <div>
                                         <span className="font-bold text-sm text-orange-200">Heatmap Guide</span>
                                         <p className="text-[11px] text-orange-300/80 mt-1 leading-relaxed">
-                                            The heatmap shows what the app "sees" as objects. <b className="text-orange-200">Bright/warm colors = detected as object</b>, dark = background.
+                                            The heatmap shows color uniformity. <b className="text-orange-200">Bright = uniform (paper)</b>, <b className="text-orange-200">Dark = varied (objects)</b>.
                                         </p>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-[10px] mt-2">
                                     <div className="flex items-center gap-1.5 text-orange-300/70">
                                         <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500 to-yellow-400"></div>
-                                        <span>Object detected</span>
+                                        <span>Uniform (paper)</span>
                                     </div>
                                     <div className="flex items-center gap-1.5 text-orange-300/70">
                                         <div className="w-3 h-3 rounded bg-gray-800"></div>
-                                        <span>Background (ignored)</span>
+                                        <span>Varied (objects)</span>
                                     </div>
                                 </div>
                                 <div className="mt-3 space-y-1.5">
