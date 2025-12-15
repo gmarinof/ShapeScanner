@@ -3890,6 +3890,7 @@ const ShapeScanner = () => {
             <button
               onClick={() => {
                 setScanMode('precision');
+                setShowModeSelect(false);
                 setShowCalibrationPrint(true);
               }}
               className="w-full p-5 rounded-2xl theme-bg-secondary border-2 border-transparent hover:border-[var(--accent-emerald)] transition-all group text-left"
