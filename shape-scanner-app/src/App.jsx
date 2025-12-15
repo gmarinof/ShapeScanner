@@ -1850,6 +1850,32 @@ const PAPER_SIZES = {
   card: { width: 85.6, height: 54, name: 'Business Card' }
 };
 
+// Calculate the scan area dimensions (between inner corners of L-markers)
+const getCalibrationScanArea = (size = 'a4') => {
+  const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
+  const { width, height } = paper;
+  
+  // Same settings as in generateCalibrationSVG
+  const markerSize = Math.min(width, height) * 0.08; // 8% of smaller dimension
+  const markerOffset = 5; // Distance from edge in mm
+  
+  // The scan area is between the inner corners of the L-markers
+  const scanWidth = width - 2 * (markerOffset + markerSize);
+  const scanHeight = height - 2 * (markerOffset + markerSize);
+  
+  // Margin from page edge to inner marker corner (for masking)
+  const markerMargin = markerOffset + markerSize;
+  
+  return { 
+    width: Math.round(scanWidth * 10) / 10, 
+    height: Math.round(scanHeight * 10) / 10,
+    markerMargin,
+    markerSize,
+    fullWidth: width,
+    fullHeight: height
+  };
+};
+
 const generateCalibrationSVG = (size = 'a4') => {
   const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
   const { width, height } = paper;
@@ -3095,6 +3121,28 @@ const ShapeScanner = () => {
 
     // Multi-polygon detection with holes
     if (viewMode !== 'original') {
+        // In precision mode, mask out the corner marker regions
+        if (scanMode === 'precision') {
+          const scanArea = getCalibrationScanArea(calibrationSize);
+          // The markers occupy a margin at each corner
+          // markerMargin is in mm, convert to pixels
+          const marginPx = Math.ceil((scanArea.markerMargin / scanArea.fullWidth) * targetW * 1.2); // 1.2x for safety
+          
+          // Mask out corner regions (set to 0 = background)
+          for (let y = 0; y < targetH; y++) {
+            for (let x = 0; x < targetW; x++) {
+              const inTopLeft = x < marginPx && y < marginPx;
+              const inTopRight = x >= targetW - marginPx && y < marginPx;
+              const inBottomLeft = x < marginPx && y >= targetH - marginPx;
+              const inBottomRight = x >= targetW - marginPx && y >= targetH - marginPx;
+              
+              if (inTopLeft || inTopRight || inBottomLeft || inBottomRight) {
+                mask[y * targetW + x] = 0;
+              }
+            }
+          }
+        }
+        
         // Use ContourTracer to detect all polygons with holes
         const polygons = ContourTracer.detectPolygons(mask, targetW, targetH, paperWidth, paperHeight, scanStep);
         
@@ -3223,7 +3271,7 @@ const ShapeScanner = () => {
     
     setIsProcessing(false);
 
-  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter]);
+  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, scanMode, calibrationSize]);
 
   // Reprocess a single polygon - applies smoothing and shape fitting only
   const reprocessPolygon = useCallback((polygonIndex) => {
@@ -4023,12 +4071,10 @@ const ShapeScanner = () => {
             </button>
             <button
               onClick={() => {
-                // Auto-set paper dimensions from calibration size
-                const paper = PAPER_SIZES[calibrationSize];
-                if (paper) {
-                  setPaperWidth(paper.width);
-                  setPaperHeight(paper.height);
-                }
+                // Auto-set paper dimensions from scan area (between markers, not full page)
+                const scanArea = getCalibrationScanArea(calibrationSize);
+                setPaperWidth(scanArea.width);
+                setPaperHeight(scanArea.height);
                 setShowCalibrationPrint(false);
                 setShowModeSelect(false);
               }}
