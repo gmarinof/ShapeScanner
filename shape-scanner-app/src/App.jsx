@@ -1627,14 +1627,17 @@ class EdgeDetector {
       const globalX = corner.x - padding + bbox.minX;
       const globalY = corner.y - padding + bbox.minY;
       
-      // Validate branch point is in sparse quadrant
-      const inSparseQuadrant = 
-        (sparseQuadrant === 'tl' && globalX < midX && globalY < midY) ||
-        (sparseQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
-        (sparseQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
-        (sparseQuadrant === 'br' && globalX >= midX && globalY >= midY);
+      // The corner of the L should be in the OPPOSITE quadrant from sparse (where the legs meet)
+      // tl sparse -> corner in br, tr sparse -> corner in bl, etc.
+      const oppositeQuadrant = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' };
+      const targetQuadrant = oppositeQuadrant[sparseQuadrant];
+      const inCorrectQuadrant = 
+        (targetQuadrant === 'tl' && globalX < midX && globalY < midY) ||
+        (targetQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
+        (targetQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
+        (targetQuadrant === 'br' && globalX >= midX && globalY >= midY);
       
-      if (inSparseQuadrant) {
+      if (inCorrectQuadrant) {
         console.log(`L-shape found in ${position} via branch point: (${globalX}, ${globalY})`);
         return { x: globalX, y: globalY };
       }
@@ -1724,15 +1727,17 @@ class EdgeDetector {
     const globalX = localIntersection.x - padding + bbox.minX;
     const globalY = localIntersection.y - padding + bbox.minY;
     
-    // Validate intersection is in sparse quadrant
-    const inSparseQuadrant = 
-      (sparseQuadrant === 'tl' && globalX < midX && globalY < midY) ||
-      (sparseQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
-      (sparseQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
-      (sparseQuadrant === 'br' && globalX >= midX && globalY >= midY);
+    // The intersection should be in the OPPOSITE quadrant from sparse (where the two legs meet)
+    const oppositeQuadrant = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' };
+    const targetQuadrant = oppositeQuadrant[sparseQuadrant];
+    const inCorrectQuadrant = 
+      (targetQuadrant === 'tl' && globalX < midX && globalY < midY) ||
+      (targetQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
+      (targetQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
+      (targetQuadrant === 'br' && globalX >= midX && globalY >= midY);
     
-    if (!inSparseQuadrant) {
-      console.log(`L-shape reject in ${position}: intersection not in sparse quadrant`);
+    if (!inCorrectQuadrant) {
+      console.log(`L-shape reject in ${position}: intersection not in correct quadrant (expected ${targetQuadrant})`);
       return null;
     }
     
