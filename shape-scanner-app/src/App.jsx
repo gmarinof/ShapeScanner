@@ -2286,46 +2286,7 @@ const ShapeScanner = () => {
             <div className="bg-neutral-900 p-5 rounded-t-3xl border-t border-neutral-800 space-y-5 z-20 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] max-h-[40vh] overflow-y-auto">
                 {viewMode !== 'original' ? (
                     <>
-                        {/* Settings scope toggle */}
-                        {detectedPolygons.length > 0 && (
-                            <div className="flex items-center justify-between bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 mb-2">
-                                <div className="flex gap-1.5">
-                                    <button 
-                                        onClick={() => setSettingsScope('global')}
-                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${settingsScope === 'global' ? 'bg-blue-600 text-white' : 'bg-neutral-700 text-neutral-400 hover:bg-neutral-600'}`}
-                                    >
-                                        Global
-                                    </button>
-                                    <button 
-                                        onClick={() => setSettingsScope('polygon')}
-                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${settingsScope === 'polygon' ? 'bg-emerald-600 text-white' : 'bg-neutral-700 text-neutral-400 hover:bg-neutral-600'}`}
-                                    >
-                                        Shape {selectedPolygonIndex + 1}
-                                    </button>
-                                </div>
-                                <div className="flex gap-1.5">
-                                    {settingsScope === 'global' && (
-                                        <button 
-                                            onClick={applyGlobalToAll}
-                                            className="px-2.5 py-1 rounded-lg flex items-center gap-1.5 bg-blue-700 hover:bg-blue-600 border border-blue-600 text-white text-[10px] font-bold uppercase tracking-wider transition-all"
-                                            title="Apply global settings to all shapes"
-                                        >
-                                            Apply to All
-                                        </button>
-                                    )}
-                                    {settingsScope === 'polygon' && (
-                                        <button 
-                                            onClick={resetPolygonToDefaults}
-                                            className="px-2.5 py-1 rounded-lg flex items-center gap-1.5 bg-neutral-700 hover:bg-neutral-600 border border-neutral-600 text-neutral-300 text-[10px] font-bold uppercase tracking-wider transition-all"
-                                            title="Reset to global settings"
-                                        >
-                                            <RotateCcw size={10}/> Reset
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        
+                        {/* Detection Settings - Always Global */}
                         <div className="flex items-center gap-2 mb-2 justify-between">
                             <div className="flex items-center gap-2">
                                 <Settings size={18} className="text-neutral-400"/>
@@ -2340,16 +2301,10 @@ const ShapeScanner = () => {
                             </div>
                             <div className="flex gap-2">
                                 <button 
-                                    onClick={() => updateSetting('smartRefine', !getCurrentSettings().smartRefine)}
-                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getCurrentSettings().smartRefine ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
+                                    onClick={() => setInvertResult(!invertResult)}
+                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${invertResult ? 'bg-purple-600 border-purple-500 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
                                 >
-                                    <PenTool size={12}/> Smart
-                                </button>
-                                <button 
-                                    onClick={() => updateSetting('invertResult', !getCurrentSettings().invertResult)}
-                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getCurrentSettings().invertResult ? 'bg-purple-600 border-purple-500 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
-                                >
-                                    {getCurrentSettings().invertResult ? <ToggleRight size={14}/> : <ToggleLeft size={14}/>} Invert
+                                    {invertResult ? <ToggleRight size={14}/> : <ToggleLeft size={14}/>} Invert
                                 </button>
                                 <div className="flex items-center gap-2 text-xs text-neutral-400 pl-2 border-l border-neutral-800">
                                     <div 
@@ -2364,12 +2319,12 @@ const ShapeScanner = () => {
                             <div className="space-y-1.5">
                                 <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
                                     <span>Threshold Sensitivity</span>
-                                    <span className="text-white">{getCurrentSettings().threshold}</span>
+                                    <span className="text-white">{threshold}</span>
                                 </div>
                                 <input 
                                     type="range" min="1" max="150" 
-                                    value={getCurrentSettings().threshold} 
-                                    onChange={(e) => updateSetting('threshold', Number(e.target.value))} 
+                                    value={threshold} 
+                                    onChange={(e) => setThreshold(Number(e.target.value))} 
                                     className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                 />
                             </div>
@@ -2378,53 +2333,113 @@ const ShapeScanner = () => {
                                 <div className="space-y-1.5">
                                     <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
                                         <span>Shadow Removal</span>
-                                        <span className="text-white">{getCurrentSettings().shadowRemoval}</span>
+                                        <span className="text-white">{shadowRemoval}</span>
                                     </div>
                                     <input 
                                         type="range" min="0" max="10" 
-                                        value={getCurrentSettings().shadowRemoval} 
-                                        onChange={(e) => updateSetting('shadowRemoval', Number(e.target.value))} 
-                                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-                                        <span>Curve Smooth</span>
-                                        <span className="text-white">{getCurrentSettings().curveSmoothing}</span>
-                                    </div>
-                                    <input 
-                                        type="range" min="0" max="5" 
-                                        value={getCurrentSettings().curveSmoothing} 
-                                        onChange={(e) => updateSetting('curveSmoothing', Number(e.target.value))} 
+                                        value={shadowRemoval} 
+                                        onChange={(e) => setShadowRemoval(Number(e.target.value))} 
                                         className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
                                     <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
                                         <span>Detail Scan</span>
-                                        <span className="text-white">{getCurrentSettings().scanStep}px</span>
+                                        <span className="text-white">{scanStep}px</span>
                                     </div>
                                     <input 
                                         type="range" min="1" max="10" 
-                                        value={getCurrentSettings().scanStep} 
-                                        onChange={(e) => updateSetting('scanStep', Number(e.target.value))} 
+                                        value={scanStep} 
+                                        onChange={(e) => setScanStep(Number(e.target.value))} 
                                         className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
                                     <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
                                         <span>Noise Filter</span>
-                                        <span className="text-white">{getCurrentSettings().noiseFilter}px</span>
+                                        <span className="text-white">{noiseFilter}px</span>
                                     </div>
                                     <input 
                                         type="range" min="0" max="10" 
-                                        value={getCurrentSettings().noiseFilter} 
-                                        onChange={(e) => updateSetting('noiseFilter', Number(e.target.value))} 
+                                        value={noiseFilter} 
+                                        onChange={(e) => setNoiseFilter(Number(e.target.value))} 
                                         className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                             </div>
                         </div>
+                        
+                        {/* Shape Settings - Per-shape when polygons detected */}
+                        {detectedPolygons.length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-neutral-800">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Layers size={16} className="text-emerald-400"/>
+                                        <span className="font-bold text-sm text-white">Shape {selectedPolygonIndex + 1} Settings</span>
+                                    </div>
+                                    <button 
+                                        onClick={resetPolygonToDefaults}
+                                        className="px-2 py-1 rounded-lg flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-all"
+                                        title="Reset to defaults"
+                                    >
+                                        <RotateCcw size={10}/> Reset
+                                    </button>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <span>Curve Smooth</span>
+                                            <span className="text-emerald-400">{getSelectedPolygonSettings().curveSmoothing}</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0" max="5" 
+                                            value={getSelectedPolygonSettings().curveSmoothing} 
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value);
+                                                setDetectedPolygons(prev => {
+                                                    const updated = [...prev];
+                                                    if (updated[selectedPolygonIndex]) {
+                                                        updated[selectedPolygonIndex] = {
+                                                            ...updated[selectedPolygonIndex],
+                                                            settings: { ...updated[selectedPolygonIndex].settings, curveSmoothing: value },
+                                                            needsReprocess: true
+                                                        };
+                                                    }
+                                                    return updated;
+                                                });
+                                            }} 
+                                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <span>Smart Fit</span>
+                                            <span className="text-emerald-400">{getSelectedPolygonSettings().smartRefine ? 'ON' : 'OFF'}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const newValue = !getSelectedPolygonSettings().smartRefine;
+                                                setDetectedPolygons(prev => {
+                                                    const updated = [...prev];
+                                                    if (updated[selectedPolygonIndex]) {
+                                                        updated[selectedPolygonIndex] = {
+                                                            ...updated[selectedPolygonIndex],
+                                                            settings: { ...updated[selectedPolygonIndex].settings, smartRefine: newValue },
+                                                            needsReprocess: true
+                                                        };
+                                                    }
+                                                    return updated;
+                                                });
+                                            }}
+                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().smartRefine ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
+                                        >
+                                            <PenTool size={12}/> {getSelectedPolygonSettings().smartRefine ? 'Enabled' : 'Disabled'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="flex gap-2 mt-2 pb-6">
                             <button onClick={() => openSaveDialog('image')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
