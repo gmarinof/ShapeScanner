@@ -1014,35 +1014,35 @@ const TUTORIAL_STEPS = [
 const TutorialOverlay = ({ currentStep, totalSteps, stepData, onNext, onPrev, onClose, onDontShowAgain }) => {
     const getIcon = (iconType) => {
         switch(iconType) {
-            case 'welcome': return <BookOpen size={32} className="text-blue-400"/>;
-            case 'camera': return <CameraIcon size={32} className="text-blue-400"/>;
-            case 'calibrate': return <Maximize2 size={32} className="text-blue-400"/>;
-            case 'process': return <ScanLine size={32} className="text-blue-400"/>;
-            case 'settings': return <Settings size={32} className="text-blue-400"/>;
-            case 'shapes': return <Layers size={32} className="text-emerald-400"/>;
-            case 'export': return <Download size={32} className="text-emerald-400"/>;
-            default: return <HelpCircle size={32} className="text-blue-400"/>;
+            case 'welcome': return <BookOpen size={32} className="text-[var(--accent-blue)]"/>;
+            case 'camera': return <CameraIcon size={32} className="text-[var(--accent-blue)]"/>;
+            case 'calibrate': return <Maximize2 size={32} className="text-[var(--accent-blue)]"/>;
+            case 'process': return <ScanLine size={32} className="text-[var(--accent-blue)]"/>;
+            case 'settings': return <Settings size={32} className="text-[var(--accent-blue)]"/>;
+            case 'shapes': return <Layers size={32} className="text-[var(--accent-emerald)]"/>;
+            case 'export': return <Download size={32} className="text-[var(--accent-emerald)]"/>;
+            default: return <HelpCircle size={32} className="text-[var(--accent-blue)]"/>;
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
-            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm flex items-center justify-center z-[90] p-4">
+            <div className="theme-bg-secondary border theme-border rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
                 <div className="p-6">
                     <div className="flex items-center gap-4 mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-neutral-800 flex items-center justify-center">
+                        <div className="w-14 h-14 rounded-xl theme-bg-tertiary flex items-center justify-center">
                             {getIcon(stepData.icon)}
                         </div>
                         <div className="flex-1">
-                            <h2 className="text-lg font-bold text-white">{stepData.title}</h2>
-                            <p className="text-xs text-neutral-500">Step {currentStep + 1} of {totalSteps}</p>
+                            <h2 className="text-lg font-bold theme-text-primary">{stepData.title}</h2>
+                            <p className="text-xs theme-text-muted">Step {currentStep + 1} of {totalSteps}</p>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
-                            <X size={20} className="text-neutral-400"/>
+                        <button onClick={onClose} className="p-2 hover:theme-bg-tertiary rounded-lg transition-colors">
+                            <X size={20} className="theme-text-secondary"/>
                         </button>
                     </div>
                     
-                    <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line mb-6">
+                    <p className="text-sm theme-text-secondary leading-relaxed whitespace-pre-line mb-6">
                         {stepData.description}
                     </p>
                     
@@ -1050,16 +1050,16 @@ const TutorialOverlay = ({ currentStep, totalSteps, stepData, onNext, onPrev, on
                         {Array.from({ length: totalSteps }).map((_, i) => (
                             <div 
                                 key={i} 
-                                className={`h-1.5 flex-1 rounded-full transition-colors ${i === currentStep ? 'bg-blue-500' : i < currentStep ? 'bg-blue-800' : 'bg-neutral-700'}`}
+                                className={`h-1.5 flex-1 rounded-full transition-colors ${i === currentStep ? 'bg-[var(--accent-blue)]' : i < currentStep ? 'bg-[var(--accent-blue)]/50' : 'theme-bg-tertiary'}`}
                             />
                         ))}
                     </div>
                 </div>
                 
-                <div className="bg-neutral-800/50 px-6 py-4 flex items-center justify-between">
+                <div className="theme-bg-tertiary px-6 py-4 flex items-center justify-between">
                     <button 
                         onClick={onDontShowAgain}
-                        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+                        className="text-xs theme-text-muted hover:theme-text-secondary transition-colors"
                     >
                         Don't show again
                     </button>
@@ -1068,14 +1068,14 @@ const TutorialOverlay = ({ currentStep, totalSteps, stepData, onNext, onPrev, on
                         {currentStep > 0 && (
                             <button 
                                 onClick={onPrev}
-                                className="px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                                className="px-4 py-2 rounded-lg theme-bg-secondary hover:opacity-80 theme-text-primary text-sm font-medium flex items-center gap-1 transition-colors"
                             >
                                 <ChevronLeft size={16}/> Back
                             </button>
                         )}
                         <button 
                             onClick={currentStep === totalSteps - 1 ? onClose : onNext}
-                            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                            className="px-4 py-2 rounded-lg bg-[var(--accent-blue)] hover:bg-[var(--accent-blue-hover)] text-white text-sm font-medium flex items-center gap-1 transition-colors"
                         >
                             {currentStep === totalSteps - 1 ? 'Get Started' : <>Next <ChevronRight size={16}/></>}
                         </button>
@@ -1097,7 +1097,7 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
             <div className="theme-bg-card border theme-border rounded-2xl max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b theme-border-secondary flex items-center justify-between">
                     <h2 className="text-lg font-bold theme-text-primary flex items-center gap-2">
-                        <Settings size={20} className="text-blue-400"/> Settings
+                        <Settings size={20} className="text-[var(--accent-blue)]"/> Settings
                     </h2>
                     <button onClick={onClose} className="p-2 hover:theme-bg-tertiary rounded-lg transition-colors">
                         <X size={20} className="theme-text-secondary"/>
@@ -1112,7 +1112,7 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
                         </div>
                         <button 
                             onClick={() => setIsDarkTheme(!isDarkTheme)}
-                            className={`w-12 h-7 rounded-full transition-colors relative ${isDarkTheme ? 'bg-blue-600' : 'bg-neutral-300'}`}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${isDarkTheme ? 'bg-[var(--accent-blue)]' : 'bg-neutral-300'}`}
                         >
                             <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${isDarkTheme ? 'translate-x-6' : 'translate-x-1'}`}/>
                         </button>
@@ -1125,7 +1125,7 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
                         </div>
                         <button 
                             onClick={() => setShowTutorialOnStart(!showTutorialOnStart)}
-                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : 'bg-[var(--bg-tertiary)]'}`}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-[var(--accent-blue)]' : 'bg-[var(--bg-tertiary)]'}`}
                         >
                             <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${showTutorialOnStart ? 'translate-x-6' : 'translate-x-1'}`}/>
                         </button>
@@ -2848,7 +2848,7 @@ const ShapeScanner = () => {
       {/* Header */}
       <div className="flex items-center justify-between p-4 theme-bg-secondary border-b theme-border z-10 shrink-0">
         <div className="flex items-center gap-2">
-           <RefreshCcw className="text-blue-500" size={20} onClick={() => setStep('capture')}/>
+           <RefreshCcw className="text-[var(--accent-blue)]" size={20} onClick={() => setStep('capture')}/>
            <h1 className="font-bold text-lg tracking-tight theme-text-primary">ShapeScanner</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -2898,35 +2898,35 @@ const ShapeScanner = () => {
 
       {/* Save Dialog Modal */}
       {showSaveDialog && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-neutral-900 rounded-2xl border border-neutral-700 p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-white font-bold text-lg mb-4">Save {saveType === 'dxf' ? 'DXF Vector' : saveType === 'svg' ? 'SVG Vector' : 'Image'}</h3>
+        <div className="fixed inset-0 z-[100] bg-[var(--bg-overlay)] backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="theme-bg-secondary rounded-2xl border theme-border p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="theme-text-primary font-bold text-lg mb-4">Save {saveType === 'dxf' ? 'DXF Vector' : saveType === 'svg' ? 'SVG Vector' : 'Image'}</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-neutral-400 uppercase font-bold block mb-2">File Name</label>
+                <label className="text-xs theme-text-secondary uppercase font-bold block mb-2">File Name</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={saveFileName}
                     onChange={(e) => setSaveFileName(e.target.value)}
                     placeholder="Enter filename"
-                    className="flex-1 bg-black border border-neutral-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                    className="flex-1 theme-bg-input border theme-border rounded-lg px-4 py-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
                     autoFocus
                   />
-                  <span className="text-neutral-500 font-mono text-sm">.{saveType === 'dxf' ? 'dxf' : saveType === 'svg' ? 'svg' : 'png'}</span>
+                  <span className="theme-text-muted font-mono text-sm">.{saveType === 'dxf' ? 'dxf' : saveType === 'svg' ? 'svg' : 'png'}</span>
                 </div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowSaveDialog(false)}
-                className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3 rounded-xl transition-all"
+                className="flex-1 theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary font-bold py-3 rounded-xl transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmSave}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+                className="flex-1 bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
               >
                 <Download size={16} /> Save
               </button>
@@ -2966,7 +2966,7 @@ const ShapeScanner = () => {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
-                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all p-6 rounded-2xl shadow-lg group text-white">
+                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center bg-[var(--accent-blue)] hover:bg-[var(--accent-blue-hover)] active:scale-95 transition-all p-6 rounded-2xl shadow-lg group text-white">
                     <Upload size={32} className="mb-2 group-hover:-translate-y-1 transition-transform"/><span className="font-bold">Upload</span>
                 </button>
                 <button onClick={handleCameraCapture} className="flex flex-col items-center justify-center theme-bg-tertiary hover:opacity-80 active:scale-95 transition-all p-6 rounded-2xl border theme-border group theme-text-primary">
@@ -2998,14 +2998,14 @@ const ShapeScanner = () => {
                 <div className="bg-[var(--bg-overlay)] backdrop-blur rounded-lg p-1 pointer-events-auto shadow-lg flex flex-col gap-1 border theme-border">
                     <button onClick={() => setView(v => ({...v, scale: v.scale * 1.2}))} className="p-2 hover:opacity-70 rounded theme-text-secondary"><ZoomIn size={20}/></button>
                     <button onClick={() => setView(v => ({...v, scale: v.scale * 0.8}))} className="p-2 hover:opacity-70 rounded theme-text-secondary"><ZoomOut size={20}/></button>
-                    <button onClick={fitToScreen} className="p-2 hover:opacity-70 rounded text-blue-500"><Maximize2 size={20}/></button>
+                    <button onClick={fitToScreen} className="p-2 hover:opacity-70 rounded text-[var(--accent-blue)]"><Maximize2 size={20}/></button>
                 </div>
                 </div>
                 
                 <div className="absolute top-4 left-4 pointer-events-none flex flex-col gap-4">
                     <button 
                         onClick={autoDetectCorners}
-                        className="pointer-events-auto bg-blue-600/90 hover:bg-blue-600 backdrop-blur text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 w-max transition-colors"
+                        className="pointer-events-auto bg-[var(--accent-blue)]/90 hover:bg-[var(--accent-blue)] backdrop-blur text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 w-max transition-colors"
                     >
                         <ScanLine size={14} /> Auto-Detect
                     </button>
@@ -3020,7 +3020,7 @@ const ShapeScanner = () => {
                                 />
                                 <button 
                                     onClick={() => setIsPickingPaperColor(!isPickingPaperColor)}
-                                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isPickingPaperColor ? 'bg-amber-500 text-black' : 'theme-bg-tertiary theme-text-secondary hover:opacity-70'}`}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isPickingPaperColor ? 'bg-[var(--accent-amber)] text-black' : 'theme-bg-tertiary theme-text-secondary hover:opacity-70'}`}
                                 >
                                     {isPickingPaperColor ? 'Tap Paper' : 'Pick'}
                                 </button>
@@ -3030,7 +3030,7 @@ const ShapeScanner = () => {
                             <span className="text-xs font-bold theme-text-secondary flex items-center gap-2"><Palette size={12}/> B&W</span>
                             <button 
                                 onClick={() => setCalMonochrome(!calMonochrome)}
-                                className={`w-8 h-4 rounded-full relative transition-colors ${calMonochrome ? 'bg-blue-600' : 'bg-[var(--bg-tertiary)]'}`}
+                                className={`w-8 h-4 rounded-full relative transition-colors ${calMonochrome ? 'bg-[var(--accent-blue)]' : 'bg-[var(--bg-tertiary)]'}`}
                             >
                                 <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${calMonochrome ? 'left-4.5' : 'left-0.5'}`} />
                             </button>
@@ -3049,7 +3049,7 @@ const ShapeScanner = () => {
                     </div>
                     
                     {isPickingPaperColor && (
-                        <div className="bg-amber-500/90 backdrop-blur text-black font-bold px-4 py-2 rounded-full text-xs shadow-lg animate-pulse pointer-events-none">
+                        <div className="bg-[var(--accent-amber)]/90 backdrop-blur text-black font-bold px-4 py-2 rounded-full text-xs shadow-lg animate-pulse pointer-events-none">
                             Tap on the paper
                         </div>
                     )}
@@ -3081,7 +3081,7 @@ const ShapeScanner = () => {
                         </div>
                     </div>
                 </div>
-                <button onClick={() => setStep('process')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-blue-900/20">
+                <button onClick={() => setStep('process')} className="w-full bg-[var(--accent-blue)] hover:bg-[var(--accent-blue-hover)] text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-blue-900/20">
                     <Check size={18} /> Confirm Dimensions
                 </button>
             </div>
@@ -3094,13 +3094,13 @@ const ShapeScanner = () => {
             
             {/* AI ANALYST SIDE PANEL/MODAL */}
             {showAiPanel && (
-                <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex justify-end">
-                    <div className="w-full max-w-sm h-full bg-neutral-900 border-l border-neutral-800 shadow-2xl flex flex-col animate-[slideInRight_0.3s_ease-out]">
-                        <div className="flex items-center justify-between p-4 border-b border-neutral-800">
-                            <h3 className="font-bold text-white flex items-center gap-2">
+                <div className="absolute inset-0 z-[60] bg-[var(--bg-overlay)] backdrop-blur-sm flex justify-end">
+                    <div className="w-full max-w-sm h-full theme-bg-secondary border-l theme-border shadow-2xl flex flex-col animate-[slideInRight_0.3s_ease-out]">
+                        <div className="flex items-center justify-between p-4 border-b theme-border">
+                            <h3 className="font-bold theme-text-primary flex items-center gap-2">
                                 <Sparkles size={18} className="text-purple-500" /> AI Analyst
                             </h3>
-                            <button onClick={() => setShowAiPanel(false)} className="p-2 hover:bg-neutral-800 rounded text-neutral-400">
+                            <button onClick={() => setShowAiPanel(false)} className="p-2 hover:theme-bg-tertiary rounded theme-text-secondary">
                                 <X size={20} />
                             </button>
                         </div>
@@ -3108,15 +3108,15 @@ const ShapeScanner = () => {
                             {isAiLoading ? (
                                 <div className="flex flex-col items-center justify-center h-full space-y-4">
                                     <div className="w-12 h-12 border-4 border-purple-600/30 border-t-purple-600 rounded-full animate-spin"></div>
-                                    <p className="text-neutral-400 text-sm animate-pulse">Analyzing geometry...</p>
+                                    <p className="theme-text-secondary text-sm animate-pulse">Analyzing geometry...</p>
                                 </div>
                             ) : (
                                 <div className="space-y-6">
-                                    <div className="bg-neutral-800/50 p-4 rounded-xl border border-neutral-700/50">
-                                        <h4 className="text-xs font-bold text-neutral-500 uppercase mb-2">Detected Part</h4>
-                                        <div className="text-white text-sm leading-relaxed whitespace-pre-line">{aiResult}</div>
+                                    <div className="theme-bg-tertiary p-4 rounded-xl border theme-border">
+                                        <h4 className="text-xs font-bold theme-text-muted uppercase mb-2">Detected Part</h4>
+                                        <div className="theme-text-primary text-sm leading-relaxed whitespace-pre-line">{aiResult}</div>
                                     </div>
-                                    <div className="text-xs text-neutral-500 text-center">
+                                    <div className="text-xs theme-text-muted text-center">
                                         AI analysis based on {processedPath.length} vector points.
                                     </div>
                                 </div>
@@ -3126,32 +3126,32 @@ const ShapeScanner = () => {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0 flex flex-col w-full bg-black relative">
+            <div className="flex-1 min-h-0 flex flex-col w-full theme-bg-primary relative">
                 {/* Process Toolbar */}
-                <div className="w-full text-center text-xs text-neutral-400 p-2 flex justify-between items-center flex-wrap gap-2 shrink-0 z-10">
+                <div className="w-full text-center text-xs theme-text-secondary p-2 flex justify-between items-center flex-wrap gap-2 shrink-0 z-10">
                     <div className="flex items-center gap-2">
-                         <div className="flex bg-neutral-900 rounded-lg p-1 border border-neutral-800">
+                         <div className="flex theme-bg-secondary rounded-lg p-1 border theme-border">
                              <button 
                                 onClick={() => setViewMode('original')}
-                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'original' ? 'bg-neutral-700 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'original' ? 'theme-bg-tertiary theme-text-primary shadow-sm' : 'theme-text-muted hover:theme-text-secondary'}`}
                              >
                                 <ImageIcon size={12}/> Orig
                              </button>
                              <button 
                                 onClick={() => setViewMode('heatmap')}
-                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'heatmap' ? 'bg-orange-900/80 text-orange-200 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'heatmap' ? 'bg-orange-900/80 text-orange-200 shadow-sm' : 'theme-text-muted hover:theme-text-secondary'}`}
                              >
                                 <Flame size={12}/> Heat
                              </button>
                              <button 
                                 onClick={() => setViewMode('processed')}
-                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'processed' ? 'bg-emerald-900/80 text-emerald-200 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'processed' ? 'bg-emerald-900/80 text-emerald-200 shadow-sm' : 'theme-text-muted hover:theme-text-secondary'}`}
                              >
                                 <Layers size={12}/> Proc
                              </button>
                              <button 
                                 onClick={() => setViewMode('contour')}
-                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'contour' ? 'bg-purple-900/80 text-purple-200 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                                className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 text-[10px] uppercase font-bold transition-all ${viewMode === 'contour' ? 'bg-purple-900/80 text-purple-200 shadow-sm' : 'theme-text-muted hover:theme-text-secondary'}`}
                              >
                                 <PenTool size={12}/> Cont
                              </button>
@@ -3173,7 +3173,7 @@ const ShapeScanner = () => {
                                 ? 'bg-amber-500 text-black border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)] animate-pulse' 
                                 : segmentMode === 'manual-bg' 
                                     ? 'bg-amber-900/30 text-amber-500 border-amber-900' 
-                                    : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:bg-neutral-700'
+                                    : 'theme-bg-tertiary theme-border theme-text-secondary hover:opacity-80'
                             }`}
                          >
                             <Pipette size={12}/> {isPicking ? 'Set' : 'Ref'}
@@ -3187,7 +3187,7 @@ const ShapeScanner = () => {
                     onWheel={handleProcessViewWheel}
                 >
                     <div 
-                        className={`relative border border-neutral-800 shadow-2xl transition-colors duration-300 ${isPicking ? 'cursor-crosshair ring-2 ring-amber-500/50' : ''} ${isProcessPanning ? 'cursor-grabbing' : ''}`}
+                        className={`relative border theme-border shadow-2xl transition-colors duration-300 ${isPicking ? 'cursor-crosshair ring-2 ring-amber-500/50' : ''} ${isProcessPanning ? 'cursor-grabbing' : ''}`}
                         style={{
                             aspectRatio: `${paperWidth}/${paperHeight}`,
                             maxHeight: '100%',
@@ -3200,10 +3200,10 @@ const ShapeScanner = () => {
                         }}
                     >
                         {!sourcePixelData.current && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/90 text-white flex-col z-50">
+                            <div className="absolute inset-0 flex items-center justify-center bg-[var(--overlay-dark)] text-white flex-col z-50">
                                 <AlertTriangle className="text-amber-500 mb-3" size={48} />
                                 <span className="text-xl font-bold mb-1">Session Expired</span>
-                                <button onClick={() => setStep('capture')} className="px-6 py-2 bg-blue-600 rounded-full font-bold text-sm mt-4 hover:bg-blue-500 transition-colors">Reload Image</button>
+                                <button onClick={() => setStep('capture')} className="px-6 py-2 bg-[var(--accent-blue)] rounded-full font-bold text-sm mt-4 hover:bg-[var(--accent-blue-hover)] transition-colors">Reload Image</button>
                             </div>
                         )}
                         <canvas 
@@ -3330,7 +3330,7 @@ const ShapeScanner = () => {
                         )}
                         
                         {isPicking && (
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-amber-500/90 backdrop-blur text-black font-bold px-6 py-3 rounded-full shadow-2xl pointer-events-none text-sm animate-bounce z-50 border-2 border-white">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--accent-amber)]/90 backdrop-blur text-black font-bold px-6 py-3 rounded-full shadow-2xl pointer-events-none text-sm animate-bounce z-50 border-2 border-white">
                                 Tap Background Color
                             </div>
                         )}
@@ -3365,8 +3365,8 @@ const ShapeScanner = () => {
                                                 onClick={(e) => { e.stopPropagation(); setSelectedPolygonIndex(idx); }}
                                                 className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
                                                     idx === selectedPolygonIndex 
-                                                        ? 'bg-emerald-500 text-white shadow-lg' 
-                                                        : 'bg-neutral-800/80 text-neutral-400 hover:bg-neutral-700'
+                                                        ? 'bg-[var(--accent-emerald)] text-white shadow-lg' 
+                                                        : 'bg-[var(--bg-overlay)] theme-text-secondary hover:opacity-80'
                                                 }`}
                                             >
                                                 {idx + 1}
@@ -3382,7 +3382,7 @@ const ShapeScanner = () => {
                             <div className="absolute bottom-4 right-4 z-50 flex gap-2">
                                 <button 
                                     onClick={resetProcessView}
-                                    className="w-8 h-8 rounded-full bg-neutral-800/90 border border-neutral-700 flex items-center justify-center text-white hover:bg-neutral-700 transition-colors"
+                                    className="w-8 h-8 rounded-full theme-bg-tertiary border theme-border flex items-center justify-center theme-text-primary hover:opacity-80 transition-colors"
                                     title="Reset zoom"
                                 >
                                     <Maximize2 size={14} />
@@ -3392,7 +3392,7 @@ const ShapeScanner = () => {
                         
                         {/* Zoom level indicator */}
                         {processView.scale !== 1 && (
-                            <div className="absolute bottom-4 left-4 z-50 bg-neutral-800/90 border border-neutral-700 rounded-full px-2 py-1 text-[10px] text-neutral-300 font-bold">
+                            <div className="absolute bottom-4 left-4 z-50 theme-bg-tertiary border theme-border rounded-full px-2 py-1 text-[10px] theme-text-secondary font-bold">
                                 {Math.round(processView.scale * 100)}%
                             </div>
                         )}
@@ -3400,16 +3400,16 @@ const ShapeScanner = () => {
                 </div>
             </div>
 
-            <div className="bg-neutral-900 p-5 rounded-t-3xl border-t border-neutral-800 space-y-5 z-20 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] max-h-[40vh] overflow-y-auto">
+            <div className="theme-bg-secondary p-5 rounded-t-3xl border-t theme-border space-y-5 z-20 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] max-h-[40vh] overflow-y-auto">
                 {viewMode !== 'original' ? (
                     <>
                         {/* Detection Settings - Always Global */}
                         <div className="flex items-center gap-2 mb-2 justify-between">
                             <div className="flex items-center gap-2">
-                                <Settings size={18} className="text-neutral-400"/>
+                                <Settings size={18} className="theme-text-secondary"/>
                                 <div className="flex flex-col leading-none">
-                                    <span className="font-bold text-sm text-white">Detection</span>
-                                    <span className="text-[10px] text-neutral-500 uppercase font-bold mt-0.5">
+                                    <span className="font-bold text-sm theme-text-primary">Detection</span>
+                                    <span className="text-[10px] theme-text-muted uppercase font-bold mt-0.5">
                                         {segmentMode === 'auto' && 'Auto Contrast'}
                                         {segmentMode === 'manual-bg' && 'Background Ref'}
                                         {segmentMode === 'manual-obj' && 'Object Ref'}
@@ -3419,13 +3419,13 @@ const ShapeScanner = () => {
                             <div className="flex gap-2">
                                 <button 
                                     onClick={() => setInvertResult(!invertResult)}
-                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${invertResult ? 'bg-purple-600 border-purple-500 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
+                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${invertResult ? 'bg-purple-600 border-purple-500 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
                                 >
                                     {invertResult ? <ToggleRight size={14}/> : <ToggleLeft size={14}/>} Invert
                                 </button>
-                                <div className="flex items-center gap-2 text-xs text-neutral-400 pl-2 border-l border-neutral-800">
+                                <div className="flex items-center gap-2 text-xs theme-text-secondary pl-2 border-l theme-border">
                                     <div 
-                                        className="w-6 h-6 rounded-full border border-neutral-600 shadow-inner" 
+                                        className="w-6 h-6 rounded-full border theme-border shadow-inner" 
                                         style={{backgroundColor: `rgb(${calculatedRefColor.r},${calculatedRefColor.g},${calculatedRefColor.b})`}} 
                                     />
                                 </div>
@@ -3434,53 +3434,53 @@ const ShapeScanner = () => {
 
                         <div className="space-y-4">
                             <div className="space-y-1.5">
-                                <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                     <span>Threshold Sensitivity</span>
-                                    <span className="text-white">{threshold}</span>
+                                    <span className="theme-text-primary">{threshold}</span>
                                 </div>
                                 <input 
                                     type="range" min="1" max="150" 
                                     value={threshold} 
                                     onChange={(e) => setThreshold(Number(e.target.value))} 
-                                    className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                    className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                 />
                             </div>
                             
                             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                                 <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                         <span>Shadow Removal</span>
-                                        <span className="text-white">{shadowRemoval}</span>
+                                        <span className="theme-text-primary">{shadowRemoval}</span>
                                     </div>
                                     <input 
                                         type="range" min="0" max="10" 
                                         value={shadowRemoval} 
                                         onChange={(e) => setShadowRemoval(Number(e.target.value))} 
-                                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                        className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                         <span>Detail Scan</span>
-                                        <span className="text-white">{scanStep}px</span>
+                                        <span className="theme-text-primary">{scanStep}px</span>
                                     </div>
                                     <input 
                                         type="range" min="1" max="10" 
                                         value={scanStep} 
                                         onChange={(e) => setScanStep(Number(e.target.value))} 
-                                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                        className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                    <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                         <span>Noise Filter</span>
-                                        <span className="text-white">{noiseFilter}px</span>
+                                        <span className="theme-text-primary">{noiseFilter}px</span>
                                     </div>
                                     <input 
                                         type="range" min="0" max="10" 
                                         value={noiseFilter} 
                                         onChange={(e) => setNoiseFilter(Number(e.target.value))} 
-                                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                        className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-blue-500" 
                                     />
                                 </div>
                             </div>
@@ -3488,17 +3488,17 @@ const ShapeScanner = () => {
                         
                         {/* Shape Settings - Per-shape when polygons detected (collapsible advanced menu) */}
                         {detectedPolygons.length > 0 && (
-                            <div className="mt-4 pt-4 border-t border-neutral-800">
+                            <div className="mt-4 pt-4 border-t theme-border">
                                 <button 
                                     onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                                    className="w-full flex items-center justify-between py-2 px-1 rounded-lg hover:bg-neutral-800/50 transition-all"
+                                    className="w-full flex items-center justify-between py-2 px-1 rounded-lg hover:theme-bg-tertiary transition-all"
                                 >
                                     <div className="flex items-center gap-2">
                                         <Layers size={16} className="text-emerald-400"/>
-                                        <span className="font-bold text-sm text-white">Shape {selectedPolygonIndex + 1} Settings</span>
-                                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider">(Advanced)</span>
+                                        <span className="font-bold text-sm theme-text-primary">Shape {selectedPolygonIndex + 1} Settings</span>
+                                        <span className="text-[9px] theme-text-muted uppercase tracking-wider">(Advanced)</span>
                                     </div>
-                                    {showAdvancedSettings ? <ChevronUp size={16} className="text-neutral-400"/> : <ChevronDown size={16} className="text-neutral-400"/>}
+                                    {showAdvancedSettings ? <ChevronUp size={16} className="theme-text-secondary"/> : <ChevronDown size={16} className="theme-text-secondary"/>}
                                 </button>
                                 
                                 {showAdvancedSettings && (
@@ -3506,7 +3506,7 @@ const ShapeScanner = () => {
                                 <div className="flex items-center justify-end mt-2 mb-3">
                                     <button 
                                         onClick={resetPolygonToDefaults}
-                                        className="px-2 py-1 rounded-lg flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-400 text-[10px] font-bold uppercase tracking-wider transition-all"
+                                        className="px-2 py-1 rounded-lg flex items-center gap-1 theme-bg-tertiary hover:opacity-80 border theme-border theme-text-secondary text-[10px] font-bold uppercase tracking-wider transition-all"
                                         title="Reset to defaults"
                                     >
                                         <RotateCcw size={10}/> Reset
@@ -3516,7 +3516,7 @@ const ShapeScanner = () => {
                                 {/* Per-shape Detection Settings */}
                                 <div className="space-y-3 mb-4">
                                     <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                             <span>Threshold</span>
                                             <span className="text-emerald-400">{getSelectedPolygonSettings().threshold}</span>
                                         </div>
@@ -3537,13 +3537,13 @@ const ShapeScanner = () => {
                                                     return updated;
                                                 });
                                             }} 
-                                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                            className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                         />
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                                         <div className="space-y-1.5">
-                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                                 <span>Shadow</span>
                                                 <span className="text-emerald-400">{getSelectedPolygonSettings().shadowRemoval}</span>
                                             </div>
@@ -3564,11 +3564,11 @@ const ShapeScanner = () => {
                                                         return updated;
                                                     });
                                                 }} 
-                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                                className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                                 <span>Noise</span>
                                                 <span className="text-emerald-400">{getSelectedPolygonSettings().noiseFilter}px</span>
                                             </div>
@@ -3589,11 +3589,11 @@ const ShapeScanner = () => {
                                                         return updated;
                                                     });
                                                 }} 
-                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                                className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                                 <span>Scan Step</span>
                                                 <span className="text-emerald-400">{getSelectedPolygonSettings().scanStep}px</span>
                                             </div>
@@ -3614,16 +3614,16 @@ const ShapeScanner = () => {
                                                         return updated;
                                                     });
                                                 }} 
-                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                                className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                             />
                                         </div>
                                     </div>
                                 </div>
                                 
                                 {/* Per-shape Vector Settings */}
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-3 border-t border-neutral-800/50">
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-3 border-t theme-border-secondary">
                                     <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                             <span>Curve Smooth</span>
                                             <span className="text-emerald-400">{getSelectedPolygonSettings().curveSmoothing}</span>
                                         </div>
@@ -3644,11 +3644,11 @@ const ShapeScanner = () => {
                                                     return updated;
                                                 });
                                             }} 
-                                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                            className="w-full h-1.5 theme-bg-tertiary rounded-lg appearance-none cursor-pointer accent-emerald-500" 
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
                                             <span>Smart Fit</span>
                                             <span className="text-emerald-400">{getSelectedPolygonSettings().smartRefine ? 'ON' : 'OFF'}</span>
                                         </div>
@@ -3667,7 +3667,7 @@ const ShapeScanner = () => {
                                                     return updated;
                                                 });
                                             }}
-                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().smartRefine ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
+                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().smartRefine ? 'bg-[var(--accent-emerald)] border-[var(--accent-emerald)] text-white' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
                                         >
                                             <PenTool size={12}/> {getSelectedPolygonSettings().smartRefine ? 'Enabled' : 'Disabled'}
                                         </button>
@@ -3679,21 +3679,21 @@ const ShapeScanner = () => {
                         )}
 
                         <div className="flex gap-2 mt-2 pb-6">
-                            <button onClick={() => openSaveDialog('image')} className="flex-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
+                            <button onClick={() => openSaveDialog('image')} className="flex-1 theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
                                 <ImageIcon size={14} /> PNG
                             </button>
-                            <button onClick={() => openSaveDialog('svg')} disabled={processedPath.length < 3} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
+                            <button onClick={() => openSaveDialog('svg')} disabled={processedPath.length < 3} className="flex-1 bg-[var(--accent-blue)] hover:bg-[var(--accent-blue-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98]">
                                 <FileText size={14} /> SVG
                             </button>
-                            <button onClick={() => openSaveDialog('dxf')} disabled={processedPath.length < 3} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
+                            <button onClick={() => openSaveDialog('dxf')} disabled={processedPath.length < 3} className="flex-1 bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-1.5 text-[10px] transition-all active:scale-[0.98] shadow-lg shadow-emerald-900/20">
                                 <Download size={14} /> DXF
                             </button>
                         </div>
                     </>
                 ) : (
-                    <div className="text-center py-8 text-neutral-500 text-sm flex flex-col gap-4 items-center pb-12">
+                    <div className="text-center py-8 theme-text-muted text-sm flex flex-col gap-4 items-center pb-12">
                         <p className="max-w-[200px]">Switch to <b>Processed</b> or <b>Heatmap</b> mode above to configure detection settings.</p>
-                        <button onClick={() => openSaveDialog('image')} className="w-full max-w-xs bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all">
+                        <button onClick={() => openSaveDialog('image')} className="w-full max-w-xs theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all">
                             <ImageIcon size={16} /> Save Original Image
                         </button>
                     </div>

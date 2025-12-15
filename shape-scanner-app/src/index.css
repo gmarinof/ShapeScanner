@@ -23,9 +23,12 @@
   --accent-blue-hover: #2563eb;
   --accent-green: #22c55e;
   --accent-emerald: #10b981;
+  --accent-emerald-hover: #059669;
   --accent-red: #ef4444;
   --accent-orange: #f97316;
   --accent-purple: #a855f7;
+  --accent-amber: #f59e0b;
+  --overlay-dark: rgba(0, 0, 0, 0.9);
 }
 
 [data-theme="light"] {
@@ -68,3 +71,14 @@ body {
 
 .theme-border { border-color: var(--border-primary); }
 .theme-border-secondary { border-color: var(--border-secondary); }
+
+/* Hover utilities */
+.hover\:theme-bg-tertiary:hover { background-color: var(--bg-tertiary); }
+.hover\:theme-bg-secondary:hover { background-color: var(--bg-secondary); }
+.hover\:theme-text-primary:hover { color: var(--text-primary); }
+.hover\:theme-text-secondary:hover { color: var(--text-secondary); }
+
+/* Accent color utilities */
+.theme-accent-blue { color: var(--accent-blue); }
+.theme-bg-accent-blue { background-color: var(--accent-blue); }
+.hover\:theme-bg-accent-blue-hover:hover { background-color: var(--accent-blue-hover); }
