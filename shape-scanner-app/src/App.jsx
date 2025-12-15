@@ -897,7 +897,7 @@ class EdgeDetector {
     const blurred = this.gaussianBlur(gray, width, height);
     
     // For each corner quadrant, compute adaptive threshold and search
-    const searchSize = Math.min(width, height) * 0.2; // Search 20% of image in each corner
+    const searchSize = Math.min(width, height) * 0.25; // Search 25% of image in each corner
     
     const corners = [
       this.findMarkerInQuadrantAdaptive(blurred, width, height, 0, 0, searchSize, 'tl'),
@@ -1107,7 +1107,7 @@ class EdgeDetector {
             queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
           }
           
-          if (region.length > 50) { // Minimum size threshold
+          if (region.length > 30) { // Minimum size threshold (lowered for smaller markers)
             regions.push({
               pixels: region,
               size: region.length,
@@ -1549,16 +1549,16 @@ class EdgeDetector {
     const w = bbox.maxX - bbox.minX + 1;
     const h = bbox.maxY - bbox.minY + 1;
     
-    // Basic validation
+    // Basic validation - relaxed for various marker sizes and print quality
     const aspectRatio = Math.max(w, h) / Math.min(w, h);
-    if (aspectRatio > 2.5) return null;
+    if (aspectRatio > 3.0) return null; // Allow slightly elongated shapes
     
     const minDimension = Math.min(w, h);
-    if (minDimension < 20) return null;
+    if (minDimension < 12) return null; // Allow smaller markers
     
     const bboxArea = w * h;
     const fillRatio = pixels.length / bboxArea;
-    if (fillRatio < 0.30 || fillRatio > 0.85) return null;
+    if (fillRatio < 0.20 || fillRatio > 0.90) return null; // Wider range for varying print quality
     
     // Analyze quadrant density for L-shape validation
     const midX = (bbox.minX + bbox.maxX) / 2;
@@ -1575,10 +1575,13 @@ class EdgeDetector {
     const total = pixels.length;
     const ratios = [tlCount/total, trCount/total, blCount/total, brCount/total];
     const minRatio = Math.min(...ratios);
-    const sparseCount = ratios.filter(r => r < 0.12).length;
-    const denseCount = ratios.filter(r => r > 0.18).length;
+    const sparseCount = ratios.filter(r => r < 0.15).length; // Relaxed from 0.12
+    const denseCount = ratios.filter(r => r > 0.15).length; // Relaxed from 0.18
     
-    if (sparseCount !== 1 || denseCount < 2 || minRatio > 0.10) return null;
+    // Log quadrant analysis for debugging
+    console.log(`L-shape ${position}: ratios=[${ratios.map(r => r.toFixed(2)).join(',')}], sparse=${sparseCount}, dense=${denseCount}`);
+    
+    if (sparseCount !== 1 || denseCount < 2 || minRatio > 0.12) return null; // Relaxed from 0.10
     
     // Find which quadrant is sparse
     const sparseQuadrant = 
