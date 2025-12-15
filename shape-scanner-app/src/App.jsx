@@ -2297,12 +2297,21 @@ const ShapeScanner = () => {
     let polygonNeedsDetection = -1;
     if (detectedPolygons[selectedPolygonIndex]?.needsDetectionReprocess) {
       polygonNeedsDetection = selectedPolygonIndex;
+      console.log('Selected polygon needs detection reprocess:', selectedPolygonIndex);
     } else {
       polygonNeedsDetection = detectedPolygons.findIndex(p => p.needsDetectionReprocess);
+      if (polygonNeedsDetection !== -1) {
+        console.log('Found polygon needing detection reprocess via findIndex:', polygonNeedsDetection);
+      }
     }
     
     if (polygonNeedsDetection !== -1) {
-      const timer = setTimeout(() => reprocessPolygonDetection(polygonNeedsDetection), 150);
+      console.log('Scheduling reprocessPolygonDetection for polygon:', polygonNeedsDetection);
+      const idx = polygonNeedsDetection; // Capture in closure
+      const timer = setTimeout(() => {
+        console.log('Executing reprocessPolygonDetection for polygon:', idx);
+        reprocessPolygonDetection(idx);
+      }, 150);
       return () => clearTimeout(timer);
     }
     
@@ -2315,7 +2324,8 @@ const ShapeScanner = () => {
     }
     
     if (polygonToReprocess !== -1) {
-      const timer = setTimeout(() => reprocessPolygon(polygonToReprocess), 100);
+      const idx = polygonToReprocess;
+      const timer = setTimeout(() => reprocessPolygon(idx), 100);
       return () => clearTimeout(timer);
     }
   }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection, selectedPolygonIndex]);
