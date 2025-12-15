@@ -2042,12 +2042,23 @@ const ShapeScanner = () => {
   
   // Reprocess polygon detection - regenerates mask and contours for a polygon's ROI with its settings
   const reprocessPolygonDetection = useCallback((polygonIndex) => {
-    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) return;
+    console.log('reprocessPolygonDetection called for polygon:', polygonIndex);
+    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) {
+      console.log('Early return - buffer:', !!unwarpedBufferRef.current, 'index:', polygonIndex, 'length:', detectedPolygons.length);
+      return;
+    }
     
     const poly = detectedPolygons[polygonIndex];
-    if (!poly.settings || !poly.pixelBbox) return;
+    if (!poly.settings || !poly.pixelBbox) {
+      console.log('Early return - settings:', !!poly.settings, 'pixelBbox:', poly.pixelBbox);
+      return;
+    }
+    
+    console.log('Polygon pixelBbox:', poly.pixelBbox);
+    console.log('Polygon mm bbox:', poly.bbox);
     
     const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
+    console.log('Buffer dimensions:', bufWidth, 'x', bufHeight);
     const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, invertResult: polyInvert, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
     
     // Get reference color from state
@@ -2064,7 +2075,12 @@ const ShapeScanner = () => {
     const roiWidth = roiMaxX - roiMinX + 1;
     const roiHeight = roiMaxY - roiMinY + 1;
     
-    if (roiWidth < 5 || roiHeight < 5) return;
+    if (roiWidth < 5 || roiHeight < 5) {
+      console.log('ROI too small:', roiWidth, 'x', roiHeight);
+      return;
+    }
+    
+    console.log('ROI:', { roiMinX, roiMaxX, roiMinY, roiMaxY, roiWidth, roiHeight });
     
     // Create mask for ROI using polygon's settings
     const roiMask = new Uint8Array(roiWidth * roiHeight);
@@ -2121,7 +2137,12 @@ const ShapeScanner = () => {
     // Label connected components in ROI
     const { labels, components } = ContourTracer.labelComponents(roiMask, roiWidth, roiHeight);
     
-    if (components.length === 0) return;
+    console.log('ROI components found:', components.length, components.map(c => ({ label: c.label, size: c.size, bbox: c.bbox })));
+    
+    if (components.length === 0) {
+      console.log('No components found in ROI mask');
+      return;
+    }
     
     // Get the largest component
     components.sort((a, b) => b.size - a.size);
@@ -2137,7 +2158,11 @@ const ShapeScanner = () => {
     
     // Trace boundary in ROI pixel coordinates
     const boundary = ContourTracer.traceBoundary4(roiMask, roiWidth, roiHeight, startPixel.x, startPixel.y, mainComponent.label, labels);
-    if (boundary.length < 5) return;
+    console.log('Boundary traced:', boundary.length, 'points. First few:', boundary.slice(0, 3));
+    if (boundary.length < 5) {
+      console.log('Boundary too short');
+      return;
+    }
     
     // Simplify contour
     const simplified = ContourTracer.simplifyContour(boundary, polyScan);
@@ -2157,6 +2182,13 @@ const ShapeScanner = () => {
     
     // Convert to mm and ensure CCW winding for outer contour
     let outerPoints = simplified.map(roiPixelToGlobalMm);
+    console.log('Converted to mm:', outerPoints.length, 'points. First few:', outerPoints.slice(0, 3));
+    console.log('Bounds of points:', {
+      minX: Math.min(...outerPoints.map(p => p.x)),
+      maxX: Math.max(...outerPoints.map(p => p.x)),
+      minY: Math.min(...outerPoints.map(p => p.y)),
+      maxY: Math.max(...outerPoints.map(p => p.y))
+    });
     if (ContourTracer.signedArea(outerPoints) < 0) {
       outerPoints = ContourTracer.reverseContour(outerPoints);
     }
