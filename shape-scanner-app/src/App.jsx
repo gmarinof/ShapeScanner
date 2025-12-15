@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp, HelpCircle, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp, HelpCircle, ChevronLeft, ChevronRight, BookOpen, Circle } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -1259,7 +1259,8 @@ const ShapeScanner = () => {
     noiseFilter: 2,
     shadowRemoval: 0,
     smartRefine: true,
-    invertResult: false
+    invertResult: false,
+    showHoles: true
   };
   
   // Helper to get current polygon's settings or global defaults
@@ -1267,7 +1268,7 @@ const ShapeScanner = () => {
     if (detectedPolygons.length > 0 && detectedPolygons[selectedPolygonIndex]?.settings) {
       return detectedPolygons[selectedPolygonIndex].settings;
     }
-    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
+    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
   }, [detectedPolygons, selectedPolygonIndex, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
   // Get current settings based on scope
@@ -1275,7 +1276,7 @@ const ShapeScanner = () => {
     if (settingsScope === 'polygon' && detectedPolygons.length > 0 && detectedPolygons[selectedPolygonIndex]?.settings) {
       return detectedPolygons[selectedPolygonIndex].settings;
     }
-    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
+    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
   }, [settingsScope, detectedPolygons, selectedPolygonIndex, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
   // Update settings based on current scope
@@ -1317,7 +1318,7 @@ const ShapeScanner = () => {
   // Apply current global settings to all polygons
   const applyGlobalToAll = useCallback(() => {
     if (detectedPolygons.length === 0) return;
-    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
+    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
     setDetectedPolygons(prev => prev.map(poly => ({
       ...poly,
       settings: { ...globalSettings },
@@ -1328,7 +1329,7 @@ const ShapeScanner = () => {
   // Reset selected polygon to global defaults
   const resetPolygonToDefaults = useCallback(() => {
     if (detectedPolygons.length === 0) return;
-    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
+    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
     setDetectedPolygons(prev => {
       const updated = [...prev];
       if (updated[selectedPolygonIndex]) {
@@ -2146,7 +2147,8 @@ const ShapeScanner = () => {
               noiseFilter,
               shadowRemoval,
               smartRefine,
-              invertResult
+              invertResult,
+              showHoles: true
             },
             needsReprocess: false
           };
@@ -2650,13 +2652,15 @@ const ShapeScanner = () => {
           poly.outer.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
         }
         
-        // Export holes
-        poly.holes.forEach((hole, holeIdx) => {
-          if (hole.length >= 2) {
-            dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Hole_" + (holeIdx + 1) + "\n90\n" + hole.length + "\n70\n1\n";
-            hole.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
-          }
-        });
+        // Export holes (only if showHoles is enabled for this polygon)
+        if (poly.settings?.showHoles !== false) {
+          poly.holes.forEach((hole, holeIdx) => {
+            if (hole.length >= 2) {
+              dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Hole_" + (holeIdx + 1) + "\n90\n" + hole.length + "\n70\n1\n";
+              hole.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
+            }
+          });
+        }
       });
     } else if (processedPath.length >= 2) {
       // Fallback to single path
@@ -2712,15 +2716,17 @@ const ShapeScanner = () => {
           ).join(' ') + ' Z';
           svg += `  <path id="shape_${polyIdx + 1}_outer" d="${pathData}" fill="none" stroke="#000000" stroke-width="0.1"/>\n`;
         }
-        // Holes
-        poly.holes.forEach((hole, holeIdx) => {
-          if (hole.length >= 2) {
-            const holeData = hole.map((p, i) => 
-              `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
-            ).join(' ') + ' Z';
-            svg += `  <path id="shape_${polyIdx + 1}_hole_${holeIdx + 1}" d="${holeData}" fill="none" stroke="#666666" stroke-width="0.1"/>\n`;
-          }
-        });
+        // Holes (only if showHoles is enabled for this polygon)
+        if (poly.settings?.showHoles !== false) {
+          poly.holes.forEach((hole, holeIdx) => {
+            if (hole.length >= 2) {
+              const holeData = hole.map((p, i) => 
+                `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
+              ).join(' ') + ' Z';
+              svg += `  <path id="shape_${polyIdx + 1}_hole_${holeIdx + 1}" d="${holeData}" fill="none" stroke="#666666" stroke-width="0.1"/>\n`;
+            }
+          });
+        }
       });
     } else if (processedPath.length >= 2) {
       const pathData = processedPath.map((p, i) => 
@@ -3252,7 +3258,7 @@ const ShapeScanner = () => {
                                             />
                                         )}
                                         {/* Holes */}
-                                        {poly.holes.map((hole, holeIdx) => (
+                                        {(poly.settings?.showHoles !== false) && poly.holes.map((hole, holeIdx) => (
                                             hole.length > 0 && (
                                                 <path 
                                                     key={`hole-${holeIdx}`}
@@ -3351,9 +3357,9 @@ const ShapeScanner = () => {
                                     <Move size={10} className="opacity-60 mr-1" />
                                     <Check size={12} className="stroke-[3]" /> 
                                     {detectedPolygons.length} Shape{detectedPolygons.length > 1 ? 's' : ''} 
-                                    {detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0) > 0 && (
+                                    {detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0) > 0 && (
                                         <span className="ml-1 text-amber-300">
-                                            + {detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0)} Hole{detectedPolygons.reduce((acc, p) => acc + p.holes.length, 0) > 1 ? 's' : ''}
+                                            + {detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0)} Hole{detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0) > 1 ? 's' : ''}
                                         </span>
                                     )}
                                 </div>
@@ -3670,6 +3676,30 @@ const ShapeScanner = () => {
                                             className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().smartRefine ? 'bg-[var(--accent-emerald)] border-[var(--accent-emerald)] text-white' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
                                         >
                                             <PenTool size={12}/> {getSelectedPolygonSettings().smartRefine ? 'Enabled' : 'Disabled'}
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
+                                            <span>Show Holes</span>
+                                            <span className="text-amber-400">{getSelectedPolygonSettings().showHoles !== false ? 'ON' : 'OFF'}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const newValue = getSelectedPolygonSettings().showHoles === false ? true : false;
+                                                setDetectedPolygons(prev => {
+                                                    const updated = [...prev];
+                                                    if (updated[selectedPolygonIndex]) {
+                                                        updated[selectedPolygonIndex] = {
+                                                            ...updated[selectedPolygonIndex],
+                                                            settings: { ...updated[selectedPolygonIndex].settings, showHoles: newValue }
+                                                        };
+                                                    }
+                                                    return updated;
+                                                });
+                                            }}
+                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().showHoles !== false ? 'bg-[var(--accent-amber)] border-[var(--accent-amber)] text-black' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
+                                        >
+                                            <Circle size={12}/> {getSelectedPolygonSettings().showHoles !== false ? 'Visible' : 'Hidden'}
                                         </button>
                                     </div>
                                 </div>

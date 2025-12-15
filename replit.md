@@ -110,3 +110,8 @@ git push github main
   - Toggle between dark and light interface in Settings menu
   - Theme preference persisted to localStorage
   - Header and main container adapt to theme selection
+- **Per-polygon hole visibility toggle**:
+  - Each shape has a "Show Holes" toggle in Advanced settings
+  - Orange dotted holes can be hidden per-shape without deleting them
+  - Hidden holes are excluded from DXF/SVG exports
+  - Hole count in badge updates to reflect visible holes only
