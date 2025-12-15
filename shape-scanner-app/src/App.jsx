@@ -1520,14 +1520,195 @@ const ShapeScanner = () => {
     }
   }, [detectedPolygons, selectedPolygonIndex]);
   
+  // Reprocess polygon detection - regenerates mask and contours for a polygon's ROI with its settings
+  const reprocessPolygonDetection = useCallback((polygonIndex) => {
+    if (!unwarpedBufferRef.current || polygonIndex < 0 || polygonIndex >= detectedPolygons.length) return;
+    
+    const poly = detectedPolygons[polygonIndex];
+    if (!poly.settings || !poly.pixelBbox) return;
+    
+    const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
+    const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, invertResult: polyInvert, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
+    
+    // Get reference color from state
+    const refR = calculatedRefColor.r || 255;
+    const refG = calculatedRefColor.g || 255;
+    const refB = calculatedRefColor.b || 255;
+    
+    // Expand bounding box with margin for better edge detection
+    const margin = 10;
+    const roiMinX = Math.max(0, poly.pixelBbox.minX - margin);
+    const roiMaxX = Math.min(bufWidth - 1, poly.pixelBbox.maxX + margin);
+    const roiMinY = Math.max(0, poly.pixelBbox.minY - margin);
+    const roiMaxY = Math.min(bufHeight - 1, poly.pixelBbox.maxY + margin);
+    const roiWidth = roiMaxX - roiMinX + 1;
+    const roiHeight = roiMaxY - roiMinY + 1;
+    
+    if (roiWidth < 5 || roiHeight < 5) return;
+    
+    // Create mask for ROI using polygon's settings
+    const roiMask = new Uint8Array(roiWidth * roiHeight);
+    
+    for (let ry = 0; ry < roiHeight; ry++) {
+      for (let rx = 0; rx < roiWidth; rx++) {
+        const globalX = roiMinX + rx;
+        const globalY = roiMinY + ry;
+        const srcIdx = (globalY * bufWidth + globalX) * 4;
+        
+        const r = rawBuffer[srcIdx];
+        const g = rawBuffer[srcIdx + 1];
+        const b = rawBuffer[srcIdx + 2];
+        
+        // Apply noise filter if enabled
+        let testR = r, testG = g, testB = b;
+        if (polyNoise > 0 && globalX > 0 && globalX < bufWidth - 1 && globalY > 0 && globalY < bufHeight - 1) {
+          const w4 = bufWidth * 4;
+          testR = (r + rawBuffer[srcIdx-4] + rawBuffer[srcIdx+4] + rawBuffer[srcIdx-w4] + rawBuffer[srcIdx+w4]) / 5;
+          testG = (g + rawBuffer[srcIdx+1-4] + rawBuffer[srcIdx+1+4] + rawBuffer[srcIdx+1-w4] + rawBuffer[srcIdx+1+w4]) / 5;
+          testB = (b + rawBuffer[srcIdx+2-4] + rawBuffer[srcIdx+2+4] + rawBuffer[srcIdx+2-w4] + rawBuffer[srcIdx+2+w4]) / 5;
+        }
+        
+        const dist = Math.sqrt((refR-testR)**2 + (refG-testG)**2 + (refB-testB)**2);
+        let isObject = segmentMode === 'manual-obj' ? dist < polyThreshold : dist > polyThreshold;
+        if (polyInvert) isObject = !isObject;
+        
+        roiMask[ry * roiWidth + rx] = isObject ? 1 : 0;
+      }
+    }
+    
+    // Apply morphological erosion (shadow removal)
+    if (polyShadow > 0) {
+      const erosionIterations = Math.floor(polyShadow);
+      for (let iter = 0; iter < erosionIterations; iter++) {
+        const erodedMask = new Uint8Array(roiWidth * roiHeight);
+        for (let ry = 1; ry < roiHeight - 1; ry++) {
+          for (let rx = 1; rx < roiWidth - 1; rx++) {
+            const i = ry * roiWidth + rx;
+            if (roiMask[i] === 1) {
+              if (roiMask[i-1]===0 || roiMask[i+1]===0 || roiMask[i-roiWidth]===0 || roiMask[i+roiWidth]===0) {
+                erodedMask[i] = 0;
+              } else {
+                erodedMask[i] = 1;
+              }
+            }
+          }
+        }
+        roiMask.set(erodedMask);
+      }
+    }
+    
+    // Detect polygons in the ROI
+    const roiPolygons = ContourTracer.detectPolygons(roiMask, roiWidth, roiHeight, 
+      (roiWidth / bufWidth) * paperWidth, 
+      (roiHeight / bufHeight) * paperHeight, 
+      polyScan);
+    
+    if (roiPolygons.length === 0) return;
+    
+    // Get the largest polygon (should be the main shape in ROI)
+    const mainPoly = roiPolygons.reduce((a, b) => (b.outer?.length > a.outer?.length ? b : a), roiPolygons[0]);
+    
+    // Convert ROI coordinates back to global mm coordinates
+    const roiOffsetXmm = (roiMinX / bufWidth) * paperWidth;
+    const roiOffsetYmm = ((bufHeight - roiMaxY - 1) / bufHeight) * paperHeight;
+    
+    let outerPoints = mainPoly.outer.map(p => ({
+      x: p.x + roiOffsetXmm,
+      y: p.y + roiOffsetYmm
+    }));
+    
+    const rawOuter = [...outerPoints];
+    
+    // Apply smoothing and shape fitting
+    let detected = 'poly';
+    if (polySmartRefine && outerPoints.length > 0) {
+      const circleFit = ShapeFitter.fitCircle(outerPoints);
+      if (circleFit) {
+        outerPoints = ShapeFitter.generateCircle(circleFit.cx, circleFit.cy, circleFit.r);
+        detected = 'circle';
+      } else {
+        outerPoints = VectorUtils.simplify(outerPoints, 0.5);
+        outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
+      }
+    } else if (outerPoints.length > 0) {
+      outerPoints = VectorUtils.simplify(outerPoints, 0.5);
+      outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
+    }
+    
+    // Process holes
+    const refinedHoles = (mainPoly.holes || []).map(hole => {
+      let holePoints = hole.map(p => ({
+        x: p.x + roiOffsetXmm,
+        y: p.y + roiOffsetYmm
+      }));
+      if (polySmartRefine) {
+        const holeFit = ShapeFitter.fitCircle(holePoints);
+        if (holeFit) {
+          holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
+        } else {
+          holePoints = VectorUtils.simplify(holePoints, 0.5);
+          holePoints = VectorUtils.smooth(holePoints, polyCurve);
+        }
+      } else {
+        holePoints = VectorUtils.simplify(holePoints, 0.5);
+        holePoints = VectorUtils.smooth(holePoints, polyCurve);
+      }
+      return holePoints;
+    });
+    
+    const rawHoles = (mainPoly.holes || []).map(hole => 
+      hole.map(p => ({ x: p.x + roiOffsetXmm, y: p.y + roiOffsetYmm }))
+    );
+    
+    // Update the polygon with new detection results
+    setDetectedPolygons(prev => {
+      const updated = [...prev];
+      const minX = Math.min(...outerPoints.map(p => p.x));
+      const maxX = Math.max(...outerPoints.map(p => p.x));
+      const minY = Math.min(...outerPoints.map(p => p.y));
+      const maxY = Math.max(...outerPoints.map(p => p.y));
+      
+      updated[polygonIndex] = {
+        ...updated[polygonIndex],
+        outer: outerPoints,
+        holes: refinedHoles,
+        rawOuter,
+        rawHoles,
+        type: detected,
+        bbox: { minX, maxX, minY, maxY },
+        needsReprocess: false,
+        needsDetectionReprocess: false
+      };
+      return updated;
+    });
+    
+    // Update primary display if this is the selected polygon
+    if (polygonIndex === selectedPolygonIndex) {
+      setProcessedPath(outerPoints);
+      const minX = Math.min(...outerPoints.map(p => p.x));
+      const maxX = Math.max(...outerPoints.map(p => p.x));
+      const minY = Math.min(...outerPoints.map(p => p.y));
+      const maxY = Math.max(...outerPoints.map(p => p.y));
+      setObjectDims({ width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY });
+      setDetectedShapeType(detected);
+    }
+  }, [detectedPolygons, selectedPolygonIndex, calculatedRefColor, segmentMode, paperWidth, paperHeight]);
+  
   // Effect to reprocess polygons when their settings change
   useEffect(() => {
+    // Check for detection reprocess first (higher priority)
+    const polygonNeedsDetection = detectedPolygons.findIndex(p => p.needsDetectionReprocess);
+    if (polygonNeedsDetection !== -1) {
+      const timer = setTimeout(() => reprocessPolygonDetection(polygonNeedsDetection), 150);
+      return () => clearTimeout(timer);
+    }
+    // Then check for vector-only reprocess
     const polygonToReprocess = detectedPolygons.findIndex(p => p.needsReprocess);
     if (polygonToReprocess !== -1) {
       const timer = setTimeout(() => reprocessPolygon(polygonToReprocess), 100);
       return () => clearTimeout(timer);
     }
-  }, [detectedPolygons, reprocessPolygon]);
+  }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection]);
 
   useEffect(() => {
     if (step === 'process') {
