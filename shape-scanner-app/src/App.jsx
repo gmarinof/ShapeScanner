@@ -3369,8 +3369,8 @@ const ShapeScanner = () => {
     
     const { width: bufWidth, height: bufHeight, data: rawBuffer } = unwarpedBufferRef.current;
     const { threshold: polyThreshold, noiseFilter: polyNoise, shadowRemoval: polyShadow, scanStep: polyScan, curveSmoothing: polyCurve, smartRefine: polySmartRefine } = poly.settings;
-    // Always use global invertResult - it's a fundamental detection mode, not per-polygon
-    const polyInvert = invertResult;
+    // Use per-polygon invert if set, otherwise fall back to global
+    const polyInvert = poly.settings.invertResult !== undefined ? poly.settings.invertResult : invertResult;
     
     // Get reference color from state
     const refR = calculatedRefColor.r || 255;
@@ -4657,6 +4657,34 @@ const ShapeScanner = () => {
             <div className="theme-bg-secondary p-5 rounded-t-3xl border-t theme-border space-y-5 z-20 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] max-h-[40vh] overflow-y-auto">
                 {viewMode !== 'original' ? (
                     <>
+                        {/* Heatmap Guide - Show when in heatmap mode */}
+                        {viewMode === 'heatmap' && (
+                            <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-orange-950/50 to-red-950/50 border border-orange-800/50">
+                                <div className="flex items-start gap-2 mb-2">
+                                    <Flame size={16} className="text-orange-400 mt-0.5 shrink-0"/>
+                                    <div>
+                                        <span className="font-bold text-sm text-orange-200">Heatmap Guide</span>
+                                        <p className="text-[11px] text-orange-300/80 mt-1 leading-relaxed">
+                                            The heatmap shows what the app "sees" as objects. <b className="text-orange-200">Bright/warm colors = detected as object</b>, dark = background.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-[10px] mt-2">
+                                    <div className="flex items-center gap-1.5 text-orange-300/70">
+                                        <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500 to-yellow-400"></div>
+                                        <span>Object detected</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-orange-300/70">
+                                        <div className="w-3 h-3 rounded bg-gray-800"></div>
+                                        <span>Background (ignored)</span>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-orange-300/60 mt-2 italic">
+                                    Adjust <b>Threshold</b> to include more (lower) or less (higher). Use <b>Invert</b> if colors are reversed. Tap <b>Ref</b> to pick background color.
+                                </p>
+                            </div>
+                        )}
+                        
                         {/* Detection Settings - Always Global */}
                         <div className="flex items-center gap-2 mb-2 justify-between">
                             <div className="flex items-center gap-2">
@@ -4948,6 +4976,32 @@ const ShapeScanner = () => {
                                             className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().showHoles !== false ? 'bg-[var(--accent-amber)] border-[var(--accent-amber)] text-black' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
                                         >
                                             <Circle size={12}/> {getSelectedPolygonSettings().showHoles !== false ? 'Visible' : 'Hidden'}
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
+                                            <span>Invert</span>
+                                            <span className="text-purple-400">{getSelectedPolygonSettings().invertResult ? 'ON' : 'OFF'}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => {
+                                                const currentValue = getSelectedPolygonSettings().invertResult;
+                                                const newValue = currentValue === undefined ? !invertResult : !currentValue;
+                                                setDetectedPolygons(prev => {
+                                                    const updated = [...prev];
+                                                    if (updated[selectedPolygonIndex]) {
+                                                        updated[selectedPolygonIndex] = {
+                                                            ...updated[selectedPolygonIndex],
+                                                            settings: { ...updated[selectedPolygonIndex].settings, invertResult: newValue },
+                                                            needsDetectionReprocess: true
+                                                        };
+                                                    }
+                                                    return updated;
+                                                });
+                                            }}
+                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().invertResult ? 'bg-purple-600 border-purple-500 text-white' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
+                                        >
+                                            {getSelectedPolygonSettings().invertResult ? <ToggleRight size={12}/> : <ToggleLeft size={12}/>} {getSelectedPolygonSettings().invertResult ? 'Inverted' : 'Normal'}
                                         </button>
                                     </div>
                                 </div>

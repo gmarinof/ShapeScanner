@@ -128,3 +128,15 @@ git push github main
     - PCA-based line fitting with perpendicularity validation (5°/10° tolerance)
     - Leg-width consistency check (ratio > 50%)
     - Falls back to edge detection if markers not found
+  - **Scan area dimensions**: Uses actual measured distances between L-marker inner corners:
+    - Letter: 200mm × 264mm
+    - A4: 195mm × 282mm
+    - Card: 75.6mm × 44mm
+  - **Marker masking**: Corner marker regions are masked during polygon detection in Precision mode
+- **Heatmap Guide**: Comprehensive help panel shown in heatmap view mode explaining:
+  - What the colors mean (bright = object, dark = background)
+  - How to adjust threshold and use invert
+  - Visual legend for color interpretation
+- **Per-polygon Invert toggle**: Each shape can now have independent invert setting in Advanced settings
+  - Useful when individual shapes need opposite detection from global setting
+  - Triggers re-detection with per-shape invert value
