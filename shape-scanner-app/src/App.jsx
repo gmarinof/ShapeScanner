@@ -1654,11 +1654,23 @@ const ShapeScanner = () => {
     if (!isDraggingBadge) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    setBadgePosition({
-      x: clientX - badgeDragOffset.x,
-      y: clientY - badgeDragOffset.y
-    });
+    
+    // Constrain to viewport bounds with padding
+    const padding = 16;
+    const badgeWidth = 150; // Approximate width
+    const badgeHeight = 40; // Approximate height
+    const maxX = window.innerWidth - badgeWidth - padding;
+    const maxY = window.innerHeight - badgeHeight - padding;
+    
+    const newX = Math.max(padding, Math.min(maxX, clientX - badgeDragOffset.x));
+    const newY = Math.max(padding, Math.min(maxY, clientY - badgeDragOffset.y));
+    
+    setBadgePosition({ x: newX, y: newY });
   }, [isDraggingBadge, badgeDragOffset]);
+
+  const resetBadgePosition = useCallback(() => {
+    setBadgePosition({ x: null, y: 16 }); // Reset to default right-aligned position
+  }, []);
 
   const handleBadgeDragEnd = useCallback(() => {
     setIsDraggingBadge(false);
@@ -3031,6 +3043,7 @@ const ShapeScanner = () => {
                                 }}
                                 onMouseDown={handleBadgeDragStart}
                                 onTouchStart={handleBadgeDragStart}
+                                onDoubleClick={resetBadgePosition}
                             >
                                 <div className="bg-green-600/90 backdrop-blur text-white px-3 py-1.5 rounded-full shadow-lg text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 border border-green-500">
                                     <Move size={10} className="opacity-60 mr-1" />
