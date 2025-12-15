@@ -436,6 +436,397 @@ class ShapeFitter {
 }
 
 /**
+ * EDGE DETECTOR - Sobel gradients + Canny-style hysteresis for corner detection
+ */
+class EdgeDetector {
+  // Sobel kernels for gradient computation
+  static SOBEL_X = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
+  static SOBEL_Y = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
+
+  // Convert RGB image data to grayscale with optional paper color distance
+  static toGrayscale(srcData, width, height, paperColor = null) {
+    const gray = new Float32Array(width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = srcData[i], g = srcData[i + 1], b = srcData[i + 2];
+        if (paperColor) {
+          // Use color distance from paper color
+          const dist = Math.sqrt(
+            (r - paperColor.r) ** 2 + 
+            (g - paperColor.g) ** 2 + 
+            (b - paperColor.b) ** 2
+          );
+          gray[y * width + x] = dist;
+        } else {
+          // Standard grayscale
+          gray[y * width + x] = 0.299 * r + 0.587 * g + 0.114 * b;
+        }
+      }
+    }
+    return gray;
+  }
+
+  // Apply Gaussian blur for noise reduction (5x5 kernel) with border mirroring
+  static gaussianBlur(gray, width, height) {
+    const kernel = [
+      [1, 4, 7, 4, 1],
+      [4, 16, 26, 16, 4],
+      [7, 26, 41, 26, 7],
+      [4, 16, 26, 16, 4],
+      [1, 4, 7, 4, 1]
+    ];
+    const kernelSum = 273;
+    const output = new Float32Array(width * height);
+    
+    // Helper to get pixel with mirror boundary handling (reflect at border)
+    const getPixel = (x, y) => {
+      const mx = x < 0 ? -x - 1 : (x >= width ? 2 * width - 1 - x : x);
+      const my = y < 0 ? -y - 1 : (y >= height ? 2 * height - 1 - y : y);
+      return gray[Math.max(0, Math.min(height - 1, my)) * width + Math.max(0, Math.min(width - 1, mx))];
+    };
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let sum = 0;
+        for (let ky = -2; ky <= 2; ky++) {
+          for (let kx = -2; kx <= 2; kx++) {
+            sum += getPixel(x + kx, y + ky) * kernel[ky + 2][kx + 2];
+          }
+        }
+        output[y * width + x] = sum / kernelSum;
+      }
+    }
+    return output;
+  }
+
+  // Compute Sobel gradients
+  static sobelGradients(gray, width, height) {
+    const gx = new Float32Array(width * height);
+    const gy = new Float32Array(width * height);
+    const magnitude = new Float32Array(width * height);
+    const direction = new Float32Array(width * height);
+    let maxMag = 0;
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let sumX = 0, sumY = 0;
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const val = gray[(y + ky) * width + (x + kx)];
+            sumX += val * this.SOBEL_X[ky + 1][kx + 1];
+            sumY += val * this.SOBEL_Y[ky + 1][kx + 1];
+          }
+        }
+        const idx = y * width + x;
+        gx[idx] = sumX;
+        gy[idx] = sumY;
+        const mag = Math.sqrt(sumX * sumX + sumY * sumY);
+        magnitude[idx] = mag;
+        direction[idx] = Math.atan2(sumY, sumX);
+        if (mag > maxMag) maxMag = mag;
+      }
+    }
+
+    return { gx, gy, magnitude, direction, maxMag };
+  }
+
+  // Non-maximum suppression for edge thinning
+  static nonMaxSuppression(magnitude, direction, width, height) {
+    const output = new Float32Array(width * height);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        const mag = magnitude[idx];
+        let angle = direction[idx] * (180 / Math.PI);
+        if (angle < 0) angle += 180;
+        
+        let n1 = 0, n2 = 0;
+        // Quantize to 4 directions
+        if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180)) {
+          // Horizontal edge, compare with left and right
+          n1 = magnitude[idx - 1];
+          n2 = magnitude[idx + 1];
+        } else if (angle >= 22.5 && angle < 67.5) {
+          // Diagonal (/), compare with upper-right and lower-left
+          n1 = magnitude[(y - 1) * width + (x + 1)];
+          n2 = magnitude[(y + 1) * width + (x - 1)];
+        } else if (angle >= 67.5 && angle < 112.5) {
+          // Vertical edge, compare with up and down
+          n1 = magnitude[(y - 1) * width + x];
+          n2 = magnitude[(y + 1) * width + x];
+        } else {
+          // Diagonal (\), compare with upper-left and lower-right
+          n1 = magnitude[(y - 1) * width + (x - 1)];
+          n2 = magnitude[(y + 1) * width + (x + 1)];
+        }
+        
+        // Keep only if it's a local maximum
+        if (mag >= n1 && mag >= n2) {
+          output[idx] = mag;
+        }
+      }
+    }
+    
+    return output;
+  }
+
+  // Double threshold and hysteresis tracking (Canny-style)
+  static hysteresisThreshold(thinned, width, height, lowRatio = 0.05, highRatio = 0.15) {
+    // Find max value
+    let maxVal = 0;
+    for (let i = 0; i < thinned.length; i++) {
+      if (thinned[i] > maxVal) maxVal = thinned[i];
+    }
+    
+    const lowThreshold = maxVal * lowRatio;
+    const highThreshold = maxVal * highRatio;
+    const edges = new Uint8Array(width * height);
+    
+    // Mark strong and weak edges
+    for (let i = 0; i < thinned.length; i++) {
+      if (thinned[i] >= highThreshold) {
+        edges[i] = 2; // Strong edge
+      } else if (thinned[i] >= lowThreshold) {
+        edges[i] = 1; // Weak edge
+      }
+    }
+    
+    // Hysteresis: promote weak edges connected to strong edges
+    const DIRS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          if (edges[idx] === 1) {
+            // Check if connected to a strong edge
+            for (const [dy, dx] of DIRS) {
+              if (edges[(y + dy) * width + (x + dx)] === 2) {
+                edges[idx] = 2;
+                changed = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Final edge map (only strong edges)
+    const result = new Uint8Array(width * height);
+    for (let i = 0; i < edges.length; i++) {
+      result[i] = edges[i] === 2 ? 1 : 0;
+    }
+    
+    return result;
+  }
+
+  // Complete Canny edge detection pipeline
+  static cannyEdgeDetection(srcData, width, height, paperColor = null, lowRatio = 0.05, highRatio = 0.15) {
+    // Step 1: Convert to grayscale (or color distance)
+    const gray = this.toGrayscale(srcData, width, height, paperColor);
+    
+    // Step 2: Gaussian blur for noise reduction
+    const blurred = this.gaussianBlur(gray, width, height);
+    
+    // Step 3: Sobel gradients
+    const { magnitude, direction, maxMag } = this.sobelGradients(blurred, width, height);
+    
+    // Step 4: Non-maximum suppression
+    const thinned = this.nonMaxSuppression(magnitude, direction, width, height);
+    
+    // Step 5: Double threshold + hysteresis
+    const edges = this.hysteresisThreshold(thinned, width, height, lowRatio, highRatio);
+    
+    return { edges, magnitude, maxMag };
+  }
+
+  // Trace largest connected edge contour using 8-connectivity
+  static traceEdgeContour(edges, width, height) {
+    const visited = new Uint8Array(width * height);
+    const contours = [];
+    const DIRS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        if (edges[idx] === 1 && visited[idx] === 0) {
+          // Start a new contour
+          const contour = [];
+          const stack = [[x, y]];
+          
+          while (stack.length > 0) {
+            const [cx, cy] = stack.pop();
+            const cidx = cy * width + cx;
+            if (visited[cidx]) continue;
+            if (edges[cidx] !== 1) continue;
+            
+            visited[cidx] = 1;
+            contour.push({ x: cx, y: cy });
+            
+            // Add connected edge pixels
+            for (const [dx, dy] of DIRS) {
+              const nx = cx + dx, ny = cy + dy;
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const nidx = ny * width + nx;
+                if (edges[nidx] === 1 && !visited[nidx]) {
+                  stack.push([nx, ny]);
+                }
+              }
+            }
+          }
+          
+          if (contour.length > 50) {
+            contours.push(contour);
+          }
+        }
+      }
+    }
+    
+    // Return largest contour
+    contours.sort((a, b) => b.length - a.length);
+    return contours.length > 0 ? contours[0] : [];
+  }
+
+  // Simplify contour using Douglas-Peucker algorithm
+  static simplifyContour(points, epsilon) {
+    if (points.length < 3) return points;
+    
+    const getSqDist = (p, p1, p2) => {
+      let x = p1.x, y = p1.y;
+      let dx = p2.x - x, dy = p2.y - y;
+      if (dx !== 0 || dy !== 0) {
+        const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+        if (t > 1) { x = p2.x; y = p2.y; }
+        else if (t > 0) { x += dx * t; y += dy * t; }
+      }
+      dx = p.x - x; dy = p.y - y;
+      return dx * dx + dy * dy;
+    };
+    
+    const simplifyDP = (pts, first, last, sqTol, simplified) => {
+      let maxSqDist = 0, index = 0;
+      for (let i = first + 1; i < last; i++) {
+        const sqDist = getSqDist(pts[i], pts[first], pts[last]);
+        if (sqDist > maxSqDist) { maxSqDist = sqDist; index = i; }
+      }
+      if (maxSqDist > sqTol) {
+        if (index - first > 1) simplifyDP(pts, first, index, sqTol, simplified);
+        simplified.push(pts[index]);
+        if (last - index > 1) simplifyDP(pts, index, last, sqTol, simplified);
+      }
+    };
+    
+    const sqTol = epsilon * epsilon;
+    const simplified = [points[0]];
+    simplifyDP(points, 0, points.length - 1, sqTol, simplified);
+    simplified.push(points[points.length - 1]);
+    
+    return simplified;
+  }
+
+  // Find 4 corners from a contour using corner detection
+  static findQuadrilateralCorners(contour, width, height) {
+    if (contour.length < 10) return null;
+    
+    // Method 1: Convex hull + extremes approach
+    // Find the 4 extreme points (TL, TR, BR, BL)
+    let minSum = Infinity, maxSum = -Infinity;
+    let minDiff = Infinity, maxDiff = -Infinity;
+    let tl = null, tr = null, br = null, bl = null;
+    
+    for (const p of contour) {
+      const sum = p.x + p.y;
+      const diff = p.x - p.y;
+      
+      if (sum < minSum) { minSum = sum; tl = { ...p }; }
+      if (sum > maxSum) { maxSum = sum; br = { ...p }; }
+      if (diff > maxDiff) { maxDiff = diff; tr = { ...p }; }
+      if (diff < minDiff) { minDiff = diff; bl = { ...p }; }
+    }
+    
+    if (!tl || !tr || !br || !bl) return null;
+    
+    // Validate: corners should form a reasonable quadrilateral
+    const corners = [tl, tr, br, bl];
+    
+    // Check minimum area (at least 5% of image area)
+    const area = this.polygonArea(corners);
+    const minArea = width * height * 0.05;
+    if (area < minArea) return null;
+    
+    // Check that corners are reasonably spread apart
+    const distances = [];
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      const dx = corners[j].x - corners[i].x;
+      const dy = corners[j].y - corners[i].y;
+      distances.push(Math.sqrt(dx * dx + dy * dy));
+    }
+    const minDist = Math.min(...distances);
+    const maxDist = Math.max(...distances);
+    
+    // Sides should be roughly similar in length (ratio < 5:1)
+    if (maxDist / minDist > 5) return null;
+    
+    // Check convexity
+    if (!this.isConvex(corners)) return null;
+    
+    return corners;
+  }
+
+  // Calculate polygon area using shoelace formula
+  static polygonArea(corners) {
+    let area = 0;
+    const n = corners.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      area += corners[i].x * corners[j].y;
+      area -= corners[j].x * corners[i].y;
+    }
+    return Math.abs(area) / 2;
+  }
+
+  // Check if polygon is convex
+  static isConvex(corners) {
+    const n = corners.length;
+    let sign = 0;
+    for (let i = 0; i < n; i++) {
+      const p1 = corners[i];
+      const p2 = corners[(i + 1) % n];
+      const p3 = corners[(i + 2) % n];
+      const cross = (p2.x - p1.x) * (p3.y - p2.y) - (p2.y - p1.y) * (p3.x - p2.x);
+      if (cross !== 0) {
+        if (sign === 0) sign = cross > 0 ? 1 : -1;
+        else if ((cross > 0 ? 1 : -1) !== sign) return false;
+      }
+    }
+    return true;
+  }
+
+  // Main function: detect paper corners from image
+  static detectPaperCorners(srcData, width, height, paperColor = null) {
+    // Run Canny edge detection
+    const { edges } = this.cannyEdgeDetection(srcData, width, height, paperColor, 0.04, 0.12);
+    
+    // Trace the largest edge contour
+    const contour = this.traceEdgeContour(edges, width, height);
+    if (contour.length < 50) return null;
+    
+    // Simplify the contour
+    const simplified = this.simplifyContour(contour, 5);
+    
+    // Find quadrilateral corners
+    const corners = this.findQuadrilateralCorners(simplified, width, height);
+    
+    return corners;
+  }
+}
+
+/**
  * AI SERVICE
  */
 const callGeminiVision = async (base64Image, width, height) => {
@@ -950,23 +1341,27 @@ const ShapeScanner = () => {
     }
   }, [corners, step, imageSrc, imgDims, view, calMonochrome, calContrast]);
 
-  // --- AUTO DETECT (uses paper color + contrast) ---
+  // --- AUTO DETECT (uses edge detection with Canny + contour fitting) ---
   const autoDetectCorners = useCallback(() => {
     if (!sourcePixelData.current) return;
     const width = imgDims.w; const height = imgDims.h; const srcData = sourcePixelData.current;
     
-    // Apply contrast adjustment to get the same view as the user sees
-    const contrastFactor = (calContrast / 100);
-    const applyContrast = (value) => {
-      const adjusted = ((value / 255 - 0.5) * contrastFactor + 0.5) * 255;
-      return Math.max(0, Math.min(255, adjusted));
-    };
+    // Try edge-based detection first (more accurate for paper boundaries)
+    const edgeCorners = EdgeDetector.detectPaperCorners(srcData, width, height, paperColor);
     
-    // Calculate color distance from the selected paper color
-    // Paper color is stored as raw values, so compare raw to raw
+    if (edgeCorners && edgeCorners.length === 4) {
+      // Validate the detected corners
+      const area = EdgeDetector.polygonArea(edgeCorners);
+      const minArea = width * height * 0.05;
+      
+      if (area >= minArea && EdgeDetector.isConvex(edgeCorners)) {
+        setCorners(edgeCorners);
+        return;
+      }
+    }
+    
+    // Fallback to color-distance based detection if edge detection fails
     const getColorDistance = (r, g, b) => {
-      // Direct comparison with paper color (no contrast adjustment needed)
-      // The contrast slider affects visual display, Otsu threshold handles the rest
       return Math.sqrt((r - paperColor.r)**2 + (g - paperColor.g)**2 + (b - paperColor.b)**2);
     };
     
@@ -1017,7 +1412,7 @@ const ShapeScanner = () => {
       }
     }
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  }, [imgDims, calContrast, paperColor]);
+  }, [imgDims, paperColor]);
 
 
   // --- POINT IN POLYGON TEST ---

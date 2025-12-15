@@ -73,8 +73,13 @@ git push github main
   - Uses `needsDetectionReprocess` flag for detection settings changes
   - Uses `needsReprocess` flag for vector-only settings changes
   - `unwarpedBufferRef` stores the grayscale buffer for per-polygon ROI reprocessing
-- **Improved corner detection**:
+- **Improved corner detection with Canny edge detection**:
+  - New `EdgeDetector` class with Sobel gradient computation
+  - Gaussian blur for noise reduction before edge detection
+  - Non-maximum suppression for edge thinning
+  - Canny-style hysteresis thresholding (double threshold)
+  - Contour tracing and Douglas-Peucker simplification
+  - Quadrilateral fitting with convexity and area validation
+  - Falls back to color distance + Otsu thresholding if edge detection fails
   - Extended contrast slider range (25%-300%) for better visibility
-  - Added paper color picker - tap "Pick" then tap on the paper to select its color
-  - Auto-detect now finds corners based on the selected paper color (not just white)
-  - Uses color distance + Otsu thresholding for robust detection on any paper color
+  - Paper color picker - tap "Pick" then tap on the paper to select its color
