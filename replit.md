@@ -64,8 +64,12 @@ git push github main
 
 ### Dec 15, 2024
 - **Tap-to-select polygons**: Click/tap directly on shapes in the canvas to select them
-- **Separated Detection vs Shape settings**:
-  - Detection settings (threshold, shadow, noise, scan, invert) are always global - affect all shapes
-  - Shape settings (curve smooth, smart fit) work per-shape - each shape can have different values
-  - "Shape X Settings" section appears when shapes are detected
-  - Reset button restores selected shape to default settings
+- **Full per-polygon settings**: ALL settings now work per-shape
+  - Detection settings (threshold, shadow, noise, scan, invert) - triggers re-detection via `reprocessPolygonDetection`
+  - Vector settings (curve smooth, smart fit) - triggers vector refinement via `reprocessPolygon`
+  - Each shape can have completely independent settings
+  - "Shape X Settings" section shows all sliders for the selected shape
+  - Reset button restores selected shape to global defaults (triggers re-detection)
+  - Uses `needsDetectionReprocess` flag for detection settings changes
+  - Uses `needsReprocess` flag for vector-only settings changes
+  - `unwarpedBufferRef` stores the grayscale buffer for per-polygon ROI reprocessing

@@ -598,6 +598,10 @@ const ShapeScanner = () => {
   
   // Update settings based on current scope
   const updateSetting = useCallback((key, value) => {
+    // Detection settings require reprocessPolygonDetection, vector settings require reprocessPolygon
+    const detectionSettingKeys = ['threshold', 'shadowRemoval', 'noiseFilter', 'scanStep', 'invertResult'];
+    const isDetectionSetting = detectionSettingKeys.includes(key);
+    
     if (settingsScope === 'polygon' && detectedPolygons.length > 0) {
       // Per-polygon mode: update only selected polygon
       setDetectedPolygons(prev => {
@@ -609,7 +613,7 @@ const ShapeScanner = () => {
               ...updated[selectedPolygonIndex].settings,
               [key]: value
             },
-            needsReprocess: true
+            ...(isDetectionSetting ? { needsDetectionReprocess: true } : { needsReprocess: true })
           };
         }
         return updated;
@@ -635,7 +639,7 @@ const ShapeScanner = () => {
     setDetectedPolygons(prev => prev.map(poly => ({
       ...poly,
       settings: { ...globalSettings },
-      needsReprocess: true
+      needsDetectionReprocess: true
     })));
   }, [detectedPolygons.length, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
@@ -649,7 +653,7 @@ const ShapeScanner = () => {
         updated[selectedPolygonIndex] = {
           ...updated[selectedPolygonIndex],
           settings: { ...globalSettings },
-          needsReprocess: true
+          needsDetectionReprocess: true
         };
       }
       return updated;
@@ -2567,7 +2571,140 @@ const ShapeScanner = () => {
                                     </button>
                                 </div>
                                 
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                                {/* Per-shape Detection Settings */}
+                                <div className="space-y-3 mb-4">
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                            <span>Threshold</span>
+                                            <span className="text-emerald-400">{getSelectedPolygonSettings().threshold}</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="1" max="150" 
+                                            value={getSelectedPolygonSettings().threshold} 
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value);
+                                                setDetectedPolygons(prev => {
+                                                    const updated = [...prev];
+                                                    if (updated[selectedPolygonIndex]) {
+                                                        updated[selectedPolygonIndex] = {
+                                                            ...updated[selectedPolygonIndex],
+                                                            settings: { ...updated[selectedPolygonIndex].settings, threshold: value },
+                                                            needsDetectionReprocess: true
+                                                        };
+                                                    }
+                                                    return updated;
+                                                });
+                                            }} 
+                                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                        />
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                                <span>Shadow</span>
+                                                <span className="text-emerald-400">{getSelectedPolygonSettings().shadowRemoval}</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0" max="10" 
+                                                value={getSelectedPolygonSettings().shadowRemoval} 
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setDetectedPolygons(prev => {
+                                                        const updated = [...prev];
+                                                        if (updated[selectedPolygonIndex]) {
+                                                            updated[selectedPolygonIndex] = {
+                                                                ...updated[selectedPolygonIndex],
+                                                                settings: { ...updated[selectedPolygonIndex].settings, shadowRemoval: value },
+                                                                needsDetectionReprocess: true
+                                                            };
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }} 
+                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                                <span>Noise</span>
+                                                <span className="text-emerald-400">{getSelectedPolygonSettings().noiseFilter}px</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0" max="10" 
+                                                value={getSelectedPolygonSettings().noiseFilter} 
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setDetectedPolygons(prev => {
+                                                        const updated = [...prev];
+                                                        if (updated[selectedPolygonIndex]) {
+                                                            updated[selectedPolygonIndex] = {
+                                                                ...updated[selectedPolygonIndex],
+                                                                settings: { ...updated[selectedPolygonIndex].settings, noiseFilter: value },
+                                                                needsDetectionReprocess: true
+                                                            };
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }} 
+                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                                <span>Scan Step</span>
+                                                <span className="text-emerald-400">{getSelectedPolygonSettings().scanStep}px</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="1" max="10" 
+                                                value={getSelectedPolygonSettings().scanStep} 
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setDetectedPolygons(prev => {
+                                                        const updated = [...prev];
+                                                        if (updated[selectedPolygonIndex]) {
+                                                            updated[selectedPolygonIndex] = {
+                                                                ...updated[selectedPolygonIndex],
+                                                                settings: { ...updated[selectedPolygonIndex].settings, scanStep: value },
+                                                                needsDetectionReprocess: true
+                                                            };
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }} 
+                                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
+                                                <span>Invert</span>
+                                                <span className="text-emerald-400">{getSelectedPolygonSettings().invertResult ? 'ON' : 'OFF'}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    const newValue = !getSelectedPolygonSettings().invertResult;
+                                                    setDetectedPolygons(prev => {
+                                                        const updated = [...prev];
+                                                        if (updated[selectedPolygonIndex]) {
+                                                            updated[selectedPolygonIndex] = {
+                                                                ...updated[selectedPolygonIndex],
+                                                                settings: { ...updated[selectedPolygonIndex].settings, invertResult: newValue },
+                                                                needsDetectionReprocess: true
+                                                            };
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }}
+                                                className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().invertResult ? 'bg-purple-600 border-purple-500 text-white' : 'bg-neutral-800 border-neutral-700 text-neutral-400'}`}
+                                            >
+                                                {getSelectedPolygonSettings().invertResult ? <ToggleRight size={12}/> : <ToggleLeft size={12}/>} {getSelectedPolygonSettings().invertResult ? 'On' : 'Off'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Per-shape Vector Settings */}
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-3 border-t border-neutral-800/50">
                                     <div className="space-y-1.5">
                                         <div className="flex justify-between text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
                                             <span>Curve Smooth</span>
