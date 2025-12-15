@@ -115,9 +115,16 @@ git push github main
   - Orange dotted holes can be hidden per-shape without deleting them
   - Hidden holes are excluded from DXF/SVG exports
   - Hole count in badge updates to reflect visible holes only
-- **Calibration page system** (in progress):
+- **Calibration page system** (complete):
   - Mode selection screen: Quick Scan vs Precision Scan
   - Calibration template generator with corner markers and rulers (SVG)
   - Support for A4, Letter, and Business Card sizes
   - Print/download functionality for calibration templates
   - Corner markers: L-shaped brackets with inner detection patterns
+  - **Precision Scan marker detection**:
+    - Zhang-Suen skeletonization with 3px border padding
+    - Spur pruning to remove anti-aliasing artifacts (<4px branches)
+    - Skeleton junction analysis for L-corner detection
+    - PCA-based line fitting with perpendicularity validation (5°/10° tolerance)
+    - Leg-width consistency check (ratio > 50%)
+    - Falls back to edge detection if markers not found
