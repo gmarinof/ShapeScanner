@@ -4023,12 +4023,18 @@ const ShapeScanner = () => {
             </button>
             <button
               onClick={() => {
+                // Auto-set paper dimensions from calibration size
+                const paper = PAPER_SIZES[calibrationSize];
+                if (paper) {
+                  setPaperWidth(paper.width);
+                  setPaperHeight(paper.height);
+                }
                 setShowCalibrationPrint(false);
                 setShowModeSelect(false);
               }}
               className="w-full py-3 rounded-xl theme-bg-tertiary hover:opacity-80 border theme-border theme-text-primary font-medium flex items-center justify-center gap-2 transition-all"
             >
-              Continue Without Printing
+              Continue to Scan
             </button>
           </div>
 
@@ -4256,6 +4262,8 @@ const ShapeScanner = () => {
 
             <div className="w-full theme-bg-secondary p-4 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)] border-t theme-border shrink-0 z-20">
                 <div className="flex gap-3 mb-4">
+                    {/* Hide format selection in precision mode - dimensions are from calibration template */}
+                    {scanMode !== 'precision' && (
                     <div className="flex flex-col gap-1 w-24 shrink-0">
                         <label className="text-[10px] theme-text-muted uppercase font-bold flex justify-between items-center mb-1">
                             Format
@@ -4267,15 +4275,16 @@ const ShapeScanner = () => {
                             <button onClick={() => applyPreset(85.6, 53.98)} className="theme-bg-tertiary hover:opacity-80 border theme-border px-2 py-1.5 rounded text-xs flex items-center gap-2 theme-text-secondary transition-colors"><CreditCard size={12}/> Card</button>
                         </div>
                     </div>
+                    )}
 
                     <div className="flex-1 flex gap-3">
                         <div className="flex-1">
                             <label className="text-[10px] theme-text-muted uppercase font-bold mb-1 block">Width (mm)</label>
-                            <input type="number" value={paperWidth} onChange={e => setPaperWidth(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
+                            <input type="number" value={paperWidth} onChange={e => setPaperWidth(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors" readOnly={scanMode === 'precision'}/>
                         </div>
                         <div className="flex-1">
                             <label className="text-[10px] theme-text-muted uppercase font-bold mb-1 block">Height (mm)</label>
-                            <input type="number" value={paperHeight} onChange={e => setPaperHeight(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"/>
+                            <input type="number" value={paperHeight} onChange={e => setPaperHeight(Number(e.target.value))} className="w-full theme-bg-input border theme-border rounded-lg p-3 theme-text-primary font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors" readOnly={scanMode === 'precision'}/>
                         </div>
                     </div>
                 </div>
