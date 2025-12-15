@@ -1850,29 +1850,30 @@ const PAPER_SIZES = {
   card: { width: 85.6, height: 54, name: 'Business Card' }
 };
 
-// Calculate the scan area dimensions (between inner corners of L-markers)
+// Actual scan area dimensions (measured between inner corners of L-markers)
+// These are the precise distances between detection points
+const CALIBRATION_SCAN_AREAS = {
+  a4: { width: 195, height: 282 },      // A4: 210x297, markers ~7.5mm from edges
+  letter: { width: 200, height: 264 },  // Letter: 215.9x279.4
+  card: { width: 75.6, height: 44 }     // Card: 85.6x54
+};
+
 const getCalibrationScanArea = (size = 'a4') => {
   const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
-  const { width, height } = paper;
+  const scanArea = CALIBRATION_SCAN_AREAS[size] || CALIBRATION_SCAN_AREAS.a4;
   
-  // Same settings as in generateCalibrationSVG
-  const markerSize = Math.min(width, height) * 0.08; // 8% of smaller dimension
-  const markerOffset = 5; // Distance from edge in mm
-  
-  // The scan area is between the inner corners of the L-markers
-  const scanWidth = width - 2 * (markerOffset + markerSize);
-  const scanHeight = height - 2 * (markerOffset + markerSize);
-  
-  // Margin from page edge to inner marker corner (for masking)
+  // Same settings as in generateCalibrationSVG for masking calculation
+  const markerSize = Math.min(paper.width, paper.height) * 0.08;
+  const markerOffset = 5;
   const markerMargin = markerOffset + markerSize;
   
   return { 
-    width: Math.round(scanWidth * 10) / 10, 
-    height: Math.round(scanHeight * 10) / 10,
+    width: scanArea.width, 
+    height: scanArea.height,
     markerMargin,
     markerSize,
-    fullWidth: width,
-    fullHeight: height
+    fullWidth: paper.width,
+    fullHeight: paper.height
   };
 };
 
