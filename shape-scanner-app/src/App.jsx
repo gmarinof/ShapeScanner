@@ -2293,18 +2293,32 @@ const ShapeScanner = () => {
   // Effect to reprocess polygons when their settings change
   useEffect(() => {
     // Check for detection reprocess first (higher priority)
-    const polygonNeedsDetection = detectedPolygons.findIndex(p => p.needsDetectionReprocess);
+    // Prioritize the selected polygon if it needs reprocessing
+    let polygonNeedsDetection = -1;
+    if (detectedPolygons[selectedPolygonIndex]?.needsDetectionReprocess) {
+      polygonNeedsDetection = selectedPolygonIndex;
+    } else {
+      polygonNeedsDetection = detectedPolygons.findIndex(p => p.needsDetectionReprocess);
+    }
+    
     if (polygonNeedsDetection !== -1) {
       const timer = setTimeout(() => reprocessPolygonDetection(polygonNeedsDetection), 150);
       return () => clearTimeout(timer);
     }
-    // Then check for vector-only reprocess
-    const polygonToReprocess = detectedPolygons.findIndex(p => p.needsReprocess);
+    
+    // Then check for vector-only reprocess - prioritize selected polygon
+    let polygonToReprocess = -1;
+    if (detectedPolygons[selectedPolygonIndex]?.needsReprocess) {
+      polygonToReprocess = selectedPolygonIndex;
+    } else {
+      polygonToReprocess = detectedPolygons.findIndex(p => p.needsReprocess);
+    }
+    
     if (polygonToReprocess !== -1) {
       const timer = setTimeout(() => reprocessPolygon(polygonToReprocess), 100);
       return () => clearTimeout(timer);
     }
-  }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection]);
+  }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection, selectedPolygonIndex]);
 
   // Effect to update display when polygon selection changes (without reprocessing)
   useEffect(() => {
