@@ -968,6 +968,122 @@ const SplashScreen = ({ onFinish }) => {
 };
 
 /**
+ * CALIBRATION TEMPLATE GENERATOR
+ * Generates SVG calibration templates with corner markers and rulers
+ */
+const PAPER_SIZES = {
+  a4: { width: 210, height: 297, name: 'A4' },
+  letter: { width: 215.9, height: 279.4, name: 'Letter' },
+  card: { width: 85.6, height: 54, name: 'Business Card' }
+};
+
+const generateCalibrationSVG = (size = 'a4') => {
+  const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
+  const { width, height } = paper;
+  
+  // Marker settings
+  const markerSize = Math.min(width, height) * 0.08; // 8% of smaller dimension
+  const markerThickness = markerSize * 0.15;
+  const markerOffset = 5; // Distance from edge in mm
+  
+  // Ruler settings
+  const tickInterval = 5; // 5mm intervals
+  const majorTickInterval = 10; // Major tick every 10mm
+  const minorTickLength = 2;
+  const majorTickLength = 4;
+  const rulerOffset = markerOffset + markerSize + 3;
+  
+  // Generate corner marker SVG path (L-shaped bracket with inner pattern)
+  const cornerMarker = (x, y, rotation) => {
+    const inner = markerSize * 0.4; // Inner square pattern size
+    return `
+      <g transform="translate(${x}, ${y}) rotate(${rotation})">
+        <!-- L-shaped bracket -->
+        <path d="M0,0 L${markerSize},0 L${markerSize},${markerThickness} L${markerThickness},${markerThickness} L${markerThickness},${markerSize} L0,${markerSize} Z" fill="black"/>
+        <!-- Inner detection pattern -->
+        <rect x="${markerThickness + 2}" y="${markerThickness + 2}" width="${inner}" height="${inner}" fill="black"/>
+        <rect x="${markerThickness + 2 + inner + 1}" y="${markerThickness + 2}" width="${inner * 0.5}" height="${inner}" fill="black"/>
+        <rect x="${markerThickness + 2}" y="${markerThickness + 2 + inner + 1}" width="${inner}" height="${inner * 0.5}" fill="black"/>
+      </g>
+    `;
+  };
+
+  // Generate ruler ticks along an edge
+  const rulerTicks = (startX, startY, length, isHorizontal) => {
+    let ticks = '';
+    const numTicks = Math.floor(length / tickInterval);
+    
+    for (let i = 0; i <= numTicks; i++) {
+      const pos = i * tickInterval;
+      const isMajor = pos % majorTickInterval === 0;
+      const tickLen = isMajor ? majorTickLength : minorTickLength;
+      
+      if (isHorizontal) {
+        ticks += `<line x1="${startX + pos}" y1="${startY}" x2="${startX + pos}" y2="${startY + tickLen}" stroke="black" stroke-width="0.3"/>`;
+        if (isMajor && pos > 0 && pos < length - 10) {
+          ticks += `<text x="${startX + pos}" y="${startY + tickLen + 3}" font-size="2" text-anchor="middle" fill="black">${pos}</text>`;
+        }
+      } else {
+        ticks += `<line x1="${startX}" y1="${startY + pos}" x2="${startX + tickLen}" y2="${startY + pos}" stroke="black" stroke-width="0.3"/>`;
+        if (isMajor && pos > 0 && pos < length - 10) {
+          ticks += `<text x="${startX + tickLen + 1}" y="${startY + pos + 0.7}" font-size="2" text-anchor="start" fill="black">${pos}</text>`;
+        }
+      }
+    }
+    return ticks;
+  };
+
+  // Calculate usable ruler lengths
+  const hRulerLength = width - (rulerOffset * 2);
+  const vRulerLength = height - (rulerOffset * 2);
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="${width}mm" 
+     height="${height}mm" 
+     viewBox="0 0 ${width} ${height}">
+  
+  <!-- Background -->
+  <rect width="${width}" height="${height}" fill="white"/>
+  
+  <!-- Border -->
+  <rect x="3" y="3" width="${width - 6}" height="${height - 6}" fill="none" stroke="black" stroke-width="0.5"/>
+  
+  <!-- Corner Markers -->
+  ${cornerMarker(markerOffset, markerOffset, 0)}
+  ${cornerMarker(width - markerOffset, markerOffset, 90)}
+  ${cornerMarker(width - markerOffset, height - markerOffset, 180)}
+  ${cornerMarker(markerOffset, height - markerOffset, 270)}
+  
+  <!-- Top Ruler -->
+  <line x1="${rulerOffset}" y1="${rulerOffset}" x2="${width - rulerOffset}" y2="${rulerOffset}" stroke="black" stroke-width="0.3"/>
+  ${rulerTicks(rulerOffset, rulerOffset, hRulerLength, true)}
+  
+  <!-- Left Ruler -->
+  <line x1="${rulerOffset}" y1="${rulerOffset}" x2="${rulerOffset}" y2="${height - rulerOffset}" stroke="black" stroke-width="0.3"/>
+  ${rulerTicks(rulerOffset, rulerOffset, vRulerLength, false)}
+  
+  <!-- Title and info -->
+  <text x="${width / 2}" y="${height / 2 - 5}" font-size="4" text-anchor="middle" fill="#666">ShapeScanner Calibration Page</text>
+  <text x="${width / 2}" y="${height / 2 + 1}" font-size="3" text-anchor="middle" fill="#888">${paper.name} (${width} × ${height} mm)</text>
+  <text x="${width / 2}" y="${height / 2 + 6}" font-size="2" text-anchor="middle" fill="#aaa">Print at 100% scale - Do not resize</text>
+  
+  <!-- Center crosshair -->
+  <line x1="${width / 2 - 10}" y1="${height / 2 + 15}" x2="${width / 2 + 10}" y2="${height / 2 + 15}" stroke="#ccc" stroke-width="0.3"/>
+  <line x1="${width / 2}" y1="${height / 2 + 5}" x2="${width / 2}" y2="${height / 2 + 25}" stroke="#ccc" stroke-width="0.3"/>
+  
+</svg>`;
+
+  return svg;
+};
+
+// Generate SVG data URL for preview
+const getCalibrationSVGDataUrl = (size) => {
+  const svg = generateCalibrationSVG(size);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+/**
  * TUTORIAL STEPS DATA
  */
 const TUTORIAL_STEPS = [
@@ -2983,30 +3099,34 @@ const ShapeScanner = () => {
             </div>
           </div>
 
-          {/* Template Preview Placeholder */}
-          <div className="w-full max-w-sm aspect-[210/297] theme-bg-secondary rounded-xl border-2 theme-border flex items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-2 border-4 border-dashed theme-border rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <Grid3X3 size={48} className="theme-text-muted mx-auto mb-2" />
-                <p className="text-sm theme-text-muted">Template Preview</p>
-                <p className="text-xs theme-text-muted mt-1">
-                  {calibrationSize === 'a4' ? '210 × 297mm' : calibrationSize === 'letter' ? '215.9 × 279.4mm' : '85.6 × 54mm'}
-                </p>
-              </div>
-            </div>
-            {/* Corner markers preview */}
-            <div className="absolute top-3 left-3 w-6 h-6 border-l-4 border-t-4 border-[var(--accent-emerald)]"></div>
-            <div className="absolute top-3 right-3 w-6 h-6 border-r-4 border-t-4 border-[var(--accent-emerald)]"></div>
-            <div className="absolute bottom-3 left-3 w-6 h-6 border-l-4 border-b-4 border-[var(--accent-emerald)]"></div>
-            <div className="absolute bottom-3 right-3 w-6 h-6 border-r-4 border-b-4 border-[var(--accent-emerald)]"></div>
+          {/* Template Preview - Actual SVG */}
+          <div 
+            className="w-full max-w-sm rounded-xl border-2 theme-border overflow-hidden shadow-inner"
+            style={{ 
+              aspectRatio: calibrationSize === 'card' ? '85.6/54' : calibrationSize === 'letter' ? '215.9/279.4' : '210/297'
+            }}
+          >
+            <img 
+              src={getCalibrationSVGDataUrl(calibrationSize)} 
+              alt={`Calibration template for ${calibrationSize}`}
+              className="w-full h-full object-contain bg-white"
+            />
           </div>
 
           {/* Action Buttons */}
           <div className="w-full max-w-sm space-y-3">
             <button
               onClick={() => {
-                // TODO: Generate and download/print calibration template
-                alert('Calibration template generation coming soon!');
+                const svg = generateCalibrationSVG(calibrationSize);
+                const blob = new Blob([svg], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `shapescanner-calibration-${calibrationSize}.svg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
               }}
               className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
             >
