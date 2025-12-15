@@ -880,6 +880,871 @@ class EdgeDetector {
     console.log('Edge detection failed with all threshold configs');
     return null;
   }
+
+  // =====================================================
+  // CALIBRATION MARKER DETECTION
+  // =====================================================
+
+  // Detect calibration markers in image corners
+  // Returns 4 corner points if all markers found, null otherwise
+  static detectCalibrationMarkers(srcData, width, height) {
+    console.log('Attempting calibration marker detection...');
+    
+    // Convert to grayscale
+    const gray = this.toGrayscale(srcData, width, height, null);
+    
+    // Apply Gaussian blur for noise reduction
+    const blurred = this.gaussianBlur(gray, width, height);
+    
+    // For each corner quadrant, compute adaptive threshold and search
+    const searchSize = Math.min(width, height) * 0.2; // Search 20% of image in each corner
+    
+    const corners = [
+      this.findMarkerInQuadrantAdaptive(blurred, width, height, 0, 0, searchSize, 'tl'),
+      this.findMarkerInQuadrantAdaptive(blurred, width, height, width - searchSize, 0, searchSize, 'tr'),
+      this.findMarkerInQuadrantAdaptive(blurred, width, height, width - searchSize, height - searchSize, searchSize, 'br'),
+      this.findMarkerInQuadrantAdaptive(blurred, width, height, 0, height - searchSize, searchSize, 'bl')
+    ];
+    
+    console.log('Marker detection results:', corners);
+    
+    // Check if all 4 markers were found
+    if (!corners.every(c => c !== null)) {
+      console.log('Calibration marker detection failed - not all markers found');
+      return null;
+    }
+    
+    // Validate the detected corners form a reasonable quadrilateral
+    const area = this.polygonArea(corners);
+    const minArea = width * height * 0.15; // At least 15% of image
+    const maxArea = width * height * 0.95; // At most 95% of image
+    
+    console.log('Marker corners validation - area:', area, 'minArea:', minArea, 'maxArea:', maxArea);
+    
+    if (area < minArea || area > maxArea) {
+      console.log('Marker corners failed area validation');
+      return null;
+    }
+    
+    if (!this.isConvex(corners)) {
+      console.log('Marker corners not convex');
+      return null;
+    }
+    
+    // Check that corners are reasonably spread apart (sides should be similar length)
+    const distances = [];
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      const dx = corners[j].x - corners[i].x;
+      const dy = corners[j].y - corners[i].y;
+      distances.push(Math.sqrt(dx * dx + dy * dy));
+    }
+    const minDist = Math.min(...distances);
+    const maxDist = Math.max(...distances);
+    
+    if (maxDist / minDist > 4) {
+      console.log('Marker corners edge ratio too large:', maxDist / minDist);
+      return null;
+    }
+    
+    console.log('All 4 calibration markers detected and validated successfully!');
+    return corners;
+  }
+  
+  // Find marker in quadrant with adaptive per-quadrant thresholding
+  static findMarkerInQuadrantAdaptive(gray, imgWidth, imgHeight, qx, qy, size, position) {
+    const minX = Math.max(0, Math.floor(qx));
+    const minY = Math.max(0, Math.floor(qy));
+    const maxX = Math.min(imgWidth, Math.floor(qx + size));
+    const maxY = Math.min(imgHeight, Math.floor(qy + size));
+    
+    // Compute local threshold for this quadrant only
+    let quadrantMin = 255, quadrantMax = 0, sum = 0, count = 0;
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        const val = gray[y * imgWidth + x];
+        if (val < quadrantMin) quadrantMin = val;
+        if (val > quadrantMax) quadrantMax = val;
+        sum += val;
+        count++;
+      }
+    }
+    
+    // If contrast is too low, no marker present
+    const contrast = quadrantMax - quadrantMin;
+    if (contrast < 50) {
+      console.log(`Quadrant ${position}: low contrast (${contrast}), skipping`);
+      return null;
+    }
+    
+    // Use threshold at 40% between min and max (biased towards dark detection)
+    const threshold = quadrantMin + contrast * 0.4;
+    
+    // Create binary mask for this quadrant
+    const binary = new Uint8Array(imgWidth * imgHeight);
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        const idx = y * imgWidth + x;
+        binary[idx] = gray[idx] < threshold ? 1 : 0;
+      }
+    }
+    
+    // Apply morphological opening to clean noise (erode then dilate)
+    const cleaned = this.morphologicalClean(binary, imgWidth, imgHeight, minX, minY, maxX, maxY);
+    
+    return this.findMarkerInQuadrant(cleaned, imgWidth, imgHeight, qx, qy, size, position);
+  }
+  
+  // Simple morphological cleaning (opening = erode then dilate)
+  static morphologicalClean(binary, width, height, minX, minY, maxX, maxY) {
+    const eroded = new Uint8Array(width * height);
+    const dilated = new Uint8Array(width * height);
+    
+    // Erode: pixel is 1 only if all 4-neighbors are 1
+    for (let y = minY + 1; y < maxY - 1; y++) {
+      for (let x = minX + 1; x < maxX - 1; x++) {
+        const idx = y * width + x;
+        if (binary[idx] === 1 &&
+            binary[idx - 1] === 1 && binary[idx + 1] === 1 &&
+            binary[idx - width] === 1 && binary[idx + width] === 1) {
+          eroded[idx] = 1;
+        }
+      }
+    }
+    
+    // Dilate: pixel is 1 if any 4-neighbor is 1
+    for (let y = minY + 1; y < maxY - 1; y++) {
+      for (let x = minX + 1; x < maxX - 1; x++) {
+        const idx = y * width + x;
+        if (eroded[idx] === 1 ||
+            eroded[idx - 1] === 1 || eroded[idx + 1] === 1 ||
+            eroded[idx - width] === 1 || eroded[idx + width] === 1) {
+          dilated[idx] = 1;
+        }
+      }
+    }
+    
+    return dilated;
+  }
+
+  // Compute Otsu threshold for binarization
+  static computeOtsuThreshold(gray, width, height) {
+    // Build histogram
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < gray.length; i++) {
+      const val = Math.max(0, Math.min(255, Math.round(gray[i])));
+      histogram[val]++;
+    }
+    
+    // Otsu's method
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+    
+    let sumB = 0, wB = 0, wF = 0;
+    let maxVar = 0, threshold = 128;
+    const total = width * height;
+    
+    for (let i = 0; i < 256; i++) {
+      wB += histogram[i];
+      if (wB === 0) continue;
+      wF = total - wB;
+      if (wF === 0) break;
+      
+      sumB += i * histogram[i];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const varBetween = wB * wF * (mB - mF) * (mB - mF);
+      
+      if (varBetween > maxVar) {
+        maxVar = varBetween;
+        threshold = i;
+      }
+    }
+    
+    return threshold;
+  }
+
+  // Find L-shaped marker in a specific quadrant
+  // Returns the inner corner point of the L-shape (paper corner)
+  static findMarkerInQuadrant(binary, imgWidth, imgHeight, qx, qy, size, position) {
+    const minX = Math.max(0, Math.floor(qx));
+    const minY = Math.max(0, Math.floor(qy));
+    const maxX = Math.min(imgWidth, Math.floor(qx + size));
+    const maxY = Math.min(imgHeight, Math.floor(qy + size));
+    
+    // Find connected black regions in this quadrant
+    const visited = new Uint8Array(imgWidth * imgHeight);
+    const regions = [];
+    
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        const idx = y * imgWidth + x;
+        if (binary[idx] === 1 && visited[idx] === 0) {
+          // Flood-fill to find connected region
+          const region = [];
+          const queue = [[x, y]];
+          let sumX = 0, sumY = 0;
+          let rMinX = x, rMaxX = x, rMinY = y, rMaxY = y;
+          
+          while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            const cidx = cy * imgWidth + cx;
+            
+            if (cx < minX || cx >= maxX || cy < minY || cy >= maxY) continue;
+            if (binary[cidx] !== 1 || visited[cidx] === 1) continue;
+            
+            visited[cidx] = 1;
+            region.push({ x: cx, y: cy });
+            sumX += cx;
+            sumY += cy;
+            
+            if (cx < rMinX) rMinX = cx;
+            if (cx > rMaxX) rMaxX = cx;
+            if (cy < rMinY) rMinY = cy;
+            if (cy > rMaxY) rMaxY = cy;
+            
+            // 4-connectivity
+            queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+          }
+          
+          if (region.length > 50) { // Minimum size threshold
+            regions.push({
+              pixels: region,
+              size: region.length,
+              centroid: { x: sumX / region.length, y: sumY / region.length },
+              bbox: { minX: rMinX, maxX: rMaxX, minY: rMinY, maxY: rMaxY }
+            });
+          }
+        }
+      }
+    }
+    
+    // Sort by size (largest first)
+    regions.sort((a, b) => b.size - a.size);
+    
+    // Look for L-shaped pattern in the largest regions - NO FALLBACK
+    // Only accept valid L-shapes to avoid misidentifying shadows/edges as markers
+    for (const region of regions.slice(0, 5)) {
+      const lCorner = this.findLShapeCorner(region, binary, imgWidth, imgHeight, position);
+      if (lCorner) {
+        console.log(`Found valid L-marker in ${position} quadrant`);
+        return lCorner;
+      }
+    }
+    
+    // No fallback - if we can't find a valid L-shape, return null
+    console.log(`No valid L-marker found in ${position} quadrant`);
+    return null;
+  }
+
+  // Trace boundary contour of a binary region
+  static traceRegionContour(pixels, bbox) {
+    const { minX, maxX, minY, maxY } = bbox;
+    const w = maxX - minX + 1;
+    const h = maxY - minY + 1;
+    
+    // Create local mask for the region
+    const localMask = new Uint8Array(w * h);
+    for (const p of pixels) {
+      const lx = p.x - minX;
+      const ly = p.y - minY;
+      if (lx >= 0 && lx < w && ly >= 0 && ly < h) {
+        localMask[ly * w + lx] = 1;
+      }
+    }
+    
+    // Find starting point (first foreground pixel on boundary)
+    let startX = -1, startY = -1;
+    for (let y = 0; y < h && startX < 0; y++) {
+      for (let x = 0; x < w; x++) {
+        if (localMask[y * w + x] === 1) {
+          startX = x; startY = y;
+          break;
+        }
+      }
+    }
+    if (startX < 0) return [];
+    
+    // Moore neighbor tracing (8-connectivity contour following)
+    const dirs = [[1,0], [1,1], [0,1], [-1,1], [-1,0], [-1,-1], [0,-1], [1,-1]];
+    const contour = [];
+    let x = startX, y = startY;
+    let dir = 0;
+    
+    const isInside = (px, py) => {
+      if (px < 0 || px >= w || py < 0 || py >= h) return false;
+      return localMask[py * w + px] === 1;
+    };
+    
+    const maxIter = w * h * 4;
+    let iter = 0;
+    
+    do {
+      contour.push({ x: x + minX, y: y + minY });
+      
+      // Search for next boundary pixel (start from backtrack direction)
+      const startDir = (dir + 5) % 8;
+      let found = false;
+      
+      for (let i = 0; i < 8; i++) {
+        const checkDir = (startDir + i) % 8;
+        const nx = x + dirs[checkDir][0];
+        const ny = y + dirs[checkDir][1];
+        
+        if (isInside(nx, ny)) {
+          x = nx; y = ny;
+          dir = checkDir;
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) break;
+      iter++;
+    } while ((x !== startX || y !== startY) && iter < maxIter);
+    
+    return contour;
+  }
+
+  // Find corners (high curvature points) on a contour
+  static findContourCorners(contour, windowSize = 7) {
+    if (contour.length < windowSize * 2) return [];
+    
+    const n = contour.length;
+    const corners = [];
+    
+    // Compute curvature at each point using angle between adjacent segments
+    for (let i = 0; i < n; i++) {
+      const prevIdx = (i - windowSize + n) % n;
+      const nextIdx = (i + windowSize) % n;
+      
+      const prev = contour[prevIdx];
+      const curr = contour[i];
+      const next = contour[nextIdx];
+      
+      // Vectors from curr to prev and curr to next
+      const v1 = { x: prev.x - curr.x, y: prev.y - curr.y };
+      const v2 = { x: next.x - curr.x, y: next.y - curr.y };
+      
+      const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+      const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+      
+      if (len1 < 1 || len2 < 1) continue;
+      
+      // Dot product gives cosine of angle
+      const dot = (v1.x * v2.x + v1.y * v2.y) / (len1 * len2);
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+      
+      corners.push({ 
+        idx: i, 
+        x: curr.x, 
+        y: curr.y, 
+        angle: angle,
+        sharpness: Math.PI - angle // Higher = sharper corner
+      });
+    }
+    
+    // Sort by sharpness (most acute first)
+    corners.sort((a, b) => b.sharpness - a.sharpness);
+    
+    // Non-maximum suppression: keep only local maxima
+    const suppressed = [];
+    const used = new Set();
+    const suppressRadius = windowSize * 2;
+    
+    for (const c of corners) {
+      let isMax = true;
+      for (const u of used) {
+        const dist = Math.abs(c.idx - u);
+        const wrapDist = Math.min(dist, n - dist);
+        if (wrapDist < suppressRadius) {
+          isMax = false;
+          break;
+        }
+      }
+      if (isMax && c.sharpness > 0.3) { // Minimum sharpness threshold
+        suppressed.push(c);
+        used.add(c.idx);
+      }
+      if (suppressed.length >= 6) break; // L-shape has 6 corners
+    }
+    
+    return suppressed;
+  }
+
+  // Zhang-Suen thinning algorithm - iteratively removes boundary pixels to create skeleton
+  static zhangSuenThinning(mask, width, height) {
+    const result = new Uint8Array(mask);
+    let changed = true;
+    
+    const getP = (x, y) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+      return result[y * width + x];
+    };
+    
+    // 8-neighborhood: P2=north, P3=NE, P4=east, P5=SE, P6=south, P7=SW, P8=west, P9=NW
+    const getNeighbors = (x, y) => [
+      getP(x, y-1), getP(x+1, y-1), getP(x+1, y), getP(x+1, y+1),
+      getP(x, y+1), getP(x-1, y+1), getP(x-1, y), getP(x-1, y-1)
+    ];
+    
+    const countTransitions = (n) => {
+      let count = 0;
+      for (let i = 0; i < 8; i++) {
+        if (n[i] === 0 && n[(i + 1) % 8] === 1) count++;
+      }
+      return count;
+    };
+    
+    const countNeighbors = (n) => n.reduce((s, v) => s + v, 0);
+    
+    while (changed) {
+      changed = false;
+      
+      // Step 1
+      const toRemove1 = [];
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          if (result[y * width + x] !== 1) continue;
+          const n = getNeighbors(x, y);
+          const B = countNeighbors(n);
+          const A = countTransitions(n);
+          if (B >= 2 && B <= 6 && A === 1 &&
+              n[0] * n[2] * n[4] === 0 && n[2] * n[4] * n[6] === 0) {
+            toRemove1.push([x, y]);
+          }
+        }
+      }
+      for (const [x, y] of toRemove1) { result[y * width + x] = 0; changed = true; }
+      
+      // Step 2
+      const toRemove2 = [];
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          if (result[y * width + x] !== 1) continue;
+          const n = getNeighbors(x, y);
+          const B = countNeighbors(n);
+          const A = countTransitions(n);
+          if (B >= 2 && B <= 6 && A === 1 &&
+              n[0] * n[2] * n[6] === 0 && n[0] * n[4] * n[6] === 0) {
+            toRemove2.push([x, y]);
+          }
+        }
+      }
+      for (const [x, y] of toRemove2) { result[y * width + x] = 0; changed = true; }
+    }
+    
+    return result;
+  }
+
+  // Prune short spurs from skeleton (artifacts from anti-aliasing)
+  static pruneSpurs(skeleton, width, height, minSpurLength = 5) {
+    const result = new Uint8Array(skeleton);
+    let maxIterations = 20; // Prevent infinite loops
+    
+    const getP = (x, y) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+      return result[y * width + x];
+    };
+    
+    const countNeighbors = (x, y) => {
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (getP(x + dx, y + dy) === 1) count++;
+        }
+      }
+      return count;
+    };
+    
+    // Iteratively remove spurs shorter than minSpurLength
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let pruned = false;
+      
+      // Find all current endpoints (pixels with exactly 1 neighbor)
+      const endpoints = [];
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          if (result[y * width + x] === 1 && countNeighbors(x, y) === 1) {
+            endpoints.push({ x, y });
+          }
+        }
+      }
+      
+      // Check if we're left with clean L-shape (2 endpoints only)
+      if (endpoints.length <= 2) break;
+      
+      // Trace from each endpoint to find short spurs
+      for (const ep of endpoints) {
+        // Re-check endpoint status (may have been pruned)
+        if (result[ep.y * width + ep.x] !== 1) continue;
+        if (countNeighbors(ep.x, ep.y) !== 1) continue;
+        
+        const path = [];
+        const visited = new Set();
+        let x = ep.x, y = ep.y;
+        let reachedBranch = false;
+        
+        while (path.length <= minSpurLength) {
+          const key = `${x},${y}`;
+          if (visited.has(key)) break;
+          visited.add(key);
+          path.push({ x, y });
+          
+          // Count current neighbors (excluding visited)
+          let nextX = -1, nextY = -1, nCount = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx, ny = y + dy;
+              if (getP(nx, ny) === 1 && !visited.has(`${nx},${ny}`)) {
+                nCount++;
+                nextX = nx; nextY = ny;
+              }
+            }
+          }
+          
+          if (nCount === 0) break; // Dead end - isolated spur
+          if (nCount > 1) { reachedBranch = true; break; } // Branch point
+          x = nextX; y = nextY;
+        }
+        
+        // Remove spur if it's short and connects to a branch point
+        if (reachedBranch && path.length > 0 && path.length < minSpurLength) {
+          for (const p of path) {
+            result[p.y * width + p.x] = 0;
+          }
+          pruned = true;
+        }
+      }
+      
+      if (!pruned) break;
+    }
+    
+    return result;
+  }
+
+  // Find endpoints and branch points in skeleton
+  static findSkeletonJunctions(skeleton, width, height) {
+    const endpoints = [];
+    const branchPoints = [];
+    
+    const getP = (x, y) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+      return skeleton[y * width + x];
+    };
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (skeleton[y * width + x] !== 1) continue;
+        
+        // Count 8-connected neighbors
+        let neighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (getP(x + dx, y + dy) === 1) neighbors++;
+          }
+        }
+        
+        if (neighbors === 1) {
+          endpoints.push({ x, y });
+        } else if (neighbors >= 3) {
+          branchPoints.push({ x, y, neighbors });
+        }
+      }
+    }
+    
+    return { endpoints, branchPoints };
+  }
+
+  // Trace skeleton from endpoint to find leg direction
+  static traceSkeletonLeg(skeleton, width, height, startX, startY, maxSteps = 100) {
+    const points = [{ x: startX, y: startY }];
+    const visited = new Set();
+    visited.add(`${startX},${startY}`);
+    
+    let x = startX, y = startY;
+    
+    for (let step = 0; step < maxSteps; step++) {
+      let found = false;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          const key = `${nx},${ny}`;
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height &&
+              skeleton[ny * width + nx] === 1 && !visited.has(key)) {
+            x = nx; y = ny;
+            visited.add(key);
+            points.push({ x, y });
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+      if (!found) break;
+    }
+    
+    return points;
+  }
+
+  // Fit a line to points using PCA
+  static fitLine(points) {
+    if (points.length < 2) return null;
+    
+    let sumX = 0, sumY = 0;
+    for (const p of points) { sumX += p.x; sumY += p.y; }
+    const cx = sumX / points.length;
+    const cy = sumY / points.length;
+    
+    let cxx = 0, cxy = 0, cyy = 0;
+    for (const p of points) {
+      const dx = p.x - cx, dy = p.y - cy;
+      cxx += dx * dx; cxy += dx * dy; cyy += dy * dy;
+    }
+    
+    const trace = cxx + cyy;
+    const det = cxx * cyy - cxy * cxy;
+    const sqrtTerm = Math.sqrt(Math.max(0, trace * trace / 4 - det));
+    const lambda1 = trace / 2 + sqrtTerm;
+    
+    let nx, ny;
+    if (Math.abs(cxy) > 1e-6) {
+      nx = lambda1 - cyy; ny = cxy;
+    } else {
+      nx = cxx > cyy ? 1 : 0; ny = cxx > cyy ? 0 : 1;
+    }
+    const len = Math.sqrt(nx * nx + ny * ny);
+    if (len < 1e-6) return null;
+    nx /= len; ny /= len;
+    
+    const a = -ny, b = nx;
+    const c = -(a * cx + b * cy);
+    
+    return { a, b, c, dir: { x: nx, y: ny }, center: { x: cx, y: cy } };
+  }
+
+  // Find intersection of two lines
+  static lineIntersection(line1, line2) {
+    const det = line1.a * line2.b - line2.a * line1.b;
+    if (Math.abs(det) < 1e-6) return null;
+    
+    const x = (line1.b * line2.c - line2.b * line1.c) / det;
+    const y = (line2.a * line1.c - line1.a * line2.c) / det;
+    return { x, y };
+  }
+
+  // Compute angle between two line directions
+  static angleBetweenLines(line1, line2) {
+    const dot = Math.abs(line1.dir.x * line2.dir.x + line1.dir.y * line2.dir.y);
+    return Math.acos(Math.min(1, dot));
+  }
+
+  // Analyze a region to find the inner corner of an L-shape using skeletonization
+  static findLShapeCorner(region, binary, imgWidth, imgHeight, position) {
+    const { bbox, pixels } = region;
+    const w = bbox.maxX - bbox.minX + 1;
+    const h = bbox.maxY - bbox.minY + 1;
+    
+    // Basic validation
+    const aspectRatio = Math.max(w, h) / Math.min(w, h);
+    if (aspectRatio > 2.5) return null;
+    
+    const minDimension = Math.min(w, h);
+    if (minDimension < 20) return null;
+    
+    const bboxArea = w * h;
+    const fillRatio = pixels.length / bboxArea;
+    if (fillRatio < 0.30 || fillRatio > 0.85) return null;
+    
+    // Analyze quadrant density for L-shape validation
+    const midX = (bbox.minX + bbox.maxX) / 2;
+    const midY = (bbox.minY + bbox.maxY) / 2;
+    
+    let tlCount = 0, trCount = 0, blCount = 0, brCount = 0;
+    for (const p of pixels) {
+      if (p.x < midX && p.y < midY) tlCount++;
+      else if (p.x >= midX && p.y < midY) trCount++;
+      else if (p.x < midX && p.y >= midY) blCount++;
+      else brCount++;
+    }
+    
+    const total = pixels.length;
+    const ratios = [tlCount/total, trCount/total, blCount/total, brCount/total];
+    const minRatio = Math.min(...ratios);
+    const sparseCount = ratios.filter(r => r < 0.12).length;
+    const denseCount = ratios.filter(r => r > 0.18).length;
+    
+    if (sparseCount !== 1 || denseCount < 2 || minRatio > 0.10) return null;
+    
+    // Find which quadrant is sparse
+    const sparseQuadrant = 
+      ratios[0] === minRatio ? 'tl' :
+      ratios[1] === minRatio ? 'tr' :
+      ratios[2] === minRatio ? 'bl' : 'br';
+    
+    // Validate sparse quadrant matches expected position
+    const expectedSparse = { tl: 'br', tr: 'bl', br: 'tl', bl: 'tr' };
+    if (sparseQuadrant !== expectedSparse[position]) return null;
+    
+    // Add padding around the blob to prevent skeletonization edge artifacts
+    const padding = 3;
+    const pw = w + padding * 2;
+    const ph = h + padding * 2;
+    
+    // Create padded local mask for the region
+    const localMask = new Uint8Array(pw * ph);
+    for (const p of pixels) {
+      const lx = p.x - bbox.minX + padding;
+      const ly = p.y - bbox.minY + padding;
+      if (lx >= 0 && lx < pw && ly >= 0 && ly < ph) {
+        localMask[ly * pw + lx] = 1;
+      }
+    }
+    
+    // Apply Zhang-Suen thinning to get skeleton
+    let skeleton = this.zhangSuenThinning(localMask, pw, ph);
+    
+    // Prune short spurs from anti-aliasing artifacts
+    skeleton = this.pruneSpurs(skeleton, pw, ph, 4);
+    
+    // Find endpoints in skeleton
+    const { endpoints, branchPoints } = this.findSkeletonJunctions(skeleton, pw, ph);
+    
+    // L-shape skeleton should have exactly 2 endpoints (end of each leg)
+    if (endpoints.length < 2) return null;
+    
+    // If there's a branch point, that's likely the L corner
+    if (branchPoints.length === 1) {
+      const corner = branchPoints[0];
+      // Convert from padded coords back to global coords
+      const globalX = corner.x - padding + bbox.minX;
+      const globalY = corner.y - padding + bbox.minY;
+      
+      // Validate branch point is in sparse quadrant
+      const inSparseQuadrant = 
+        (sparseQuadrant === 'tl' && globalX < midX && globalY < midY) ||
+        (sparseQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
+        (sparseQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
+        (sparseQuadrant === 'br' && globalX >= midX && globalY >= midY);
+      
+      if (inSparseQuadrant) {
+        console.log(`L-shape found in ${position} via branch point: (${globalX}, ${globalY})`);
+        return { x: globalX, y: globalY };
+      }
+    }
+    
+    // Trace from endpoints to find leg directions, then intersect
+    const legs = [];
+    for (const ep of endpoints.slice(0, 3)) {
+      const trace = this.traceSkeletonLeg(skeleton, pw, ph, ep.x, ep.y, Math.max(pw, ph));
+      if (trace.length >= 5) {
+        const line = this.fitLine(trace);
+        if (line) {
+          // Estimate leg width from original mask
+          let widthSum = 0, widthCount = 0;
+          for (const pt of trace) {
+            // Check perpendicular width at this point
+            const perpX = -line.dir.y;
+            const perpY = line.dir.x;
+            let width = 0;
+            for (let d = -10; d <= 10; d++) {
+              const checkX = Math.round(pt.x + perpX * d);
+              const checkY = Math.round(pt.y + perpY * d);
+              if (checkX >= 0 && checkX < pw && checkY >= 0 && checkY < ph) {
+                if (localMask[checkY * pw + checkX] === 1) width++;
+              }
+            }
+            if (width > 0) {
+              widthSum += width;
+              widthCount++;
+            }
+          }
+          const avgWidth = widthCount > 0 ? widthSum / widthCount : 0;
+          legs.push({ trace, line, endpoint: ep, avgWidth });
+        }
+      }
+    }
+    
+    if (legs.length < 2) return null;
+    
+    // Find best perpendicular pair with consistent leg widths
+    let bestPair = null;
+    let bestAngleDiff = Infinity;
+    
+    for (let i = 0; i < legs.length; i++) {
+      for (let j = i + 1; j < legs.length; j++) {
+        const angle = this.angleBetweenLines(legs[i].line, legs[j].line);
+        const angleDiff = Math.abs(angle - Math.PI / 2);
+        
+        // Check leg-width consistency (widths should be within 50% of each other)
+        const w1 = legs[i].avgWidth, w2 = legs[j].avgWidth;
+        const widthRatio = w1 > 0 && w2 > 0 ? Math.min(w1, w2) / Math.max(w1, w2) : 0;
+        
+        // Must be close to perpendicular (within 5 degrees = 0.087 rad) and have consistent widths
+        if (angleDiff < 0.087 && widthRatio > 0.5 && angleDiff < bestAngleDiff) {
+          bestAngleDiff = angleDiff;
+          bestPair = [legs[i], legs[j]];
+        }
+      }
+    }
+    
+    // If strict tolerance fails, try relaxed tolerance (10 degrees)
+    if (!bestPair) {
+      for (let i = 0; i < legs.length; i++) {
+        for (let j = i + 1; j < legs.length; j++) {
+          const angle = this.angleBetweenLines(legs[i].line, legs[j].line);
+          const angleDiff = Math.abs(angle - Math.PI / 2);
+          
+          // Relaxed: within 10 degrees (0.175 rad)
+          if (angleDiff < 0.175 && angleDiff < bestAngleDiff) {
+            bestAngleDiff = angleDiff;
+            bestPair = [legs[i], legs[j]];
+          }
+        }
+      }
+    }
+    
+    if (!bestPair) {
+      console.log(`L-shape reject in ${position}: legs not perpendicular`);
+      return null;
+    }
+    
+    // Compute intersection
+    const localIntersection = this.lineIntersection(bestPair[0].line, bestPair[1].line);
+    if (!localIntersection) return null;
+    
+    // Convert from padded coords back to global coords
+    const globalX = localIntersection.x - padding + bbox.minX;
+    const globalY = localIntersection.y - padding + bbox.minY;
+    
+    // Validate intersection is in sparse quadrant
+    const inSparseQuadrant = 
+      (sparseQuadrant === 'tl' && globalX < midX && globalY < midY) ||
+      (sparseQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
+      (sparseQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
+      (sparseQuadrant === 'br' && globalX >= midX && globalY >= midY);
+    
+    if (!inSparseQuadrant) {
+      console.log(`L-shape reject in ${position}: intersection not in sparse quadrant`);
+      return null;
+    }
+    
+    // Validate intersection is within reasonable bounds
+    const margin = Math.max(w, h) * 0.3;
+    if (globalX < bbox.minX - margin || globalX > bbox.maxX + margin ||
+        globalY < bbox.minY - margin || globalY > bbox.maxY + margin) {
+      return null;
+    }
+    
+    const angle = 90 - (bestAngleDiff * 180 / Math.PI);
+    console.log(`L-shape found in ${position}: corner at (${globalX.toFixed(0)}, ${globalY.toFixed(0)}), angle=${angle.toFixed(1)}°`);
+    
+    return { x: globalX, y: globalY };
+  }
 }
 
 /**
@@ -1774,9 +2639,22 @@ const ShapeScanner = () => {
       adjustedData[i + 3] = srcData[i + 3];
     }
     
-    console.log('Auto-detect running with contrast:', calContrast, 'paper color:', paperColor);
+    console.log('Auto-detect running with contrast:', calContrast, 'paper color:', paperColor, 'scanMode:', scanMode);
     
-    // Try edge-based detection first (more accurate for paper boundaries)
+    // If in precision mode, try calibration marker detection first
+    if (scanMode === 'precision') {
+      console.log('Precision mode: attempting calibration marker detection...');
+      const markerCorners = EdgeDetector.detectCalibrationMarkers(adjustedData, width, height);
+      
+      if (markerCorners && markerCorners.length === 4) {
+        console.log('Calibration markers detected successfully!');
+        setCorners(markerCorners);
+        return;
+      }
+      console.log('Marker detection failed, falling back to edge detection');
+    }
+    
+    // Try edge-based detection (more accurate for paper boundaries)
     const edgeCorners = EdgeDetector.detectPaperCorners(adjustedData, width, height, paperColor);
     
     console.log('Edge detection result:', edgeCorners);
@@ -1851,7 +2729,7 @@ const ShapeScanner = () => {
     }
     console.log('Fallback corners found:', tl.val !== Infinity ? 'yes' : 'no');
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  }, [imgDims, paperColor, calContrast]);
+  }, [imgDims, paperColor, calContrast, scanMode]);
 
 
   // --- POINT IN POLYGON TEST ---

@@ -115,3 +115,9 @@ git push github main
   - Orange dotted holes can be hidden per-shape without deleting them
   - Hidden holes are excluded from DXF/SVG exports
   - Hole count in badge updates to reflect visible holes only
+- **Calibration page system** (in progress):
+  - Mode selection screen: Quick Scan vs Precision Scan
+  - Calibration template generator with corner markers and rulers (SVG)
+  - Support for A4, Letter, and Business Card sizes
+  - Print/download functionality for calibration templates
+  - Corner markers: L-shaped brackets with inner detection patterns
