@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp } from 'lucide-react';
+import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, ScanLine, ZoomIn, ZoomOut, Maximize2, MousePointer2, Eye, EyeOff, Sun, Palette, Pipette, ToggleLeft, ToggleRight, AlertTriangle, Image as ImageIcon, Layers, Flame, Bug, PenTool, FileText, CreditCard, BoxSelect, Eraser, RotateCcw, Sparkles, X, Move, ChevronDown, ChevronUp, HelpCircle, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -968,11 +968,218 @@ const SplashScreen = ({ onFinish }) => {
 };
 
 /**
+ * TUTORIAL STEPS DATA
+ */
+const TUTORIAL_STEPS = [
+    {
+        title: "Welcome to ShapeScanner",
+        description: "This app converts photos of physical objects into vector files (DXF/SVG) for CAD and CNC manufacturing. Let's walk through the key features!",
+        icon: "welcome"
+    },
+    {
+        title: "Step 1: Capture",
+        description: "Start by taking a photo or uploading an image. Place your object on a sheet of paper with good contrast. The paper edges help with perspective correction.",
+        icon: "camera"
+    },
+    {
+        title: "Step 2: Calibrate",
+        description: "Drag the corner markers to align with the paper edges. Adjust contrast if needed, or use the paper color picker for tricky backgrounds. Set paper size (A4, Letter, etc.).",
+        icon: "calibrate"
+    },
+    {
+        title: "Step 3: Process",
+        description: "The app detects shapes automatically. Use view modes to see the original, processed outline, or detection heatmap. Multiple shapes are detected and numbered.",
+        icon: "process"
+    },
+    {
+        title: "Detection Settings",
+        description: "• Threshold: Sensitivity for detecting object edges\n• Shadow Removal: Removes dark shadows around objects\n• Noise Filter: Smooths out small artifacts\n• Detail Scan: Resolution of edge detection",
+        icon: "settings"
+    },
+    {
+        title: "Per-Shape Settings",
+        description: "Tap on any shape to select it. Open 'Advanced' settings to fine-tune each shape independently. Each shape can have its own threshold, smoothing, and refinement settings.",
+        icon: "shapes"
+    },
+    {
+        title: "Export Options",
+        description: "• DXF: For CAD software (AutoCAD, Fusion 360)\n• SVG: For graphic design and laser cutters\n• PNG: Simple image export\n\nAll vector exports use real millimeter dimensions!",
+        icon: "export"
+    }
+];
+
+/**
+ * TUTORIAL OVERLAY COMPONENT
+ */
+const TutorialOverlay = ({ currentStep, totalSteps, stepData, onNext, onPrev, onClose, onDontShowAgain }) => {
+    const getIcon = (iconType) => {
+        switch(iconType) {
+            case 'welcome': return <BookOpen size={32} className="text-blue-400"/>;
+            case 'camera': return <CameraIcon size={32} className="text-blue-400"/>;
+            case 'calibrate': return <Maximize2 size={32} className="text-blue-400"/>;
+            case 'process': return <ScanLine size={32} className="text-blue-400"/>;
+            case 'settings': return <Settings size={32} className="text-blue-400"/>;
+            case 'shapes': return <Layers size={32} className="text-emerald-400"/>;
+            case 'export': return <Download size={32} className="text-emerald-400"/>;
+            default: return <HelpCircle size={32} className="text-blue-400"/>;
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+                <div className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="w-14 h-14 rounded-xl bg-neutral-800 flex items-center justify-center">
+                            {getIcon(stepData.icon)}
+                        </div>
+                        <div className="flex-1">
+                            <h2 className="text-lg font-bold text-white">{stepData.title}</h2>
+                            <p className="text-xs text-neutral-500">Step {currentStep + 1} of {totalSteps}</p>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
+                            <X size={20} className="text-neutral-400"/>
+                        </button>
+                    </div>
+                    
+                    <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line mb-6">
+                        {stepData.description}
+                    </p>
+                    
+                    <div className="flex items-center gap-2 mb-4">
+                        {Array.from({ length: totalSteps }).map((_, i) => (
+                            <div 
+                                key={i} 
+                                className={`h-1.5 flex-1 rounded-full transition-colors ${i === currentStep ? 'bg-blue-500' : i < currentStep ? 'bg-blue-800' : 'bg-neutral-700'}`}
+                            />
+                        ))}
+                    </div>
+                </div>
+                
+                <div className="bg-neutral-800/50 px-6 py-4 flex items-center justify-between">
+                    <button 
+                        onClick={onDontShowAgain}
+                        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+                    >
+                        Don't show again
+                    </button>
+                    
+                    <div className="flex gap-2">
+                        {currentStep > 0 && (
+                            <button 
+                                onClick={onPrev}
+                                className="px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                            >
+                                <ChevronLeft size={16}/> Back
+                            </button>
+                        )}
+                        <button 
+                            onClick={currentStep === totalSteps - 1 ? onClose : onNext}
+                            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center gap-1 transition-colors"
+                        >
+                            {currentStep === totalSteps - 1 ? 'Get Started' : <>Next <ChevronRight size={16}/></>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/**
+ * SETTINGS MENU COMPONENT
+ */
+const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnStart, onOpenTutorial }) => {
+    if (!isOpen) return null;
+    
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={onClose}>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Settings size={20} className="text-blue-400"/> Settings
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
+                        <X size={20} className="text-neutral-400"/>
+                    </button>
+                </div>
+                
+                <div className="p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-white">Show Tutorial on Start</p>
+                            <p className="text-xs text-neutral-500">Display walkthrough for new users</p>
+                        </div>
+                        <button 
+                            onClick={() => setShowTutorialOnStart(!showTutorialOnStart)}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : 'bg-neutral-700'}`}
+                        >
+                            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${showTutorialOnStart ? 'translate-x-6' : 'translate-x-1'}`}/>
+                        </button>
+                    </div>
+                    
+                    <button 
+                        onClick={() => { onOpenTutorial(); onClose(); }}
+                        className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                    >
+                        <BookOpen size={18}/> View Tutorial
+                    </button>
+                </div>
+                
+                <div className="p-4 border-t border-neutral-800">
+                    <p className="text-[10px] text-neutral-600 text-center">ShapeScanner v1.0 • Hotwave studio</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/**
  * MAIN COMPONENT
  */
 const ShapeScanner = () => {
   // --- SPLASH STATE ---
   const [showSplash, setShowSplash] = useState(true);
+
+  // --- TUTORIAL STATE ---
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [showTutorialOnStart, setShowTutorialOnStart] = useState(() => {
+    const stored = localStorage.getItem('shapescanner_show_tutorial');
+    return stored === null ? true : stored === 'true';
+  });
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+
+  // Check if first time user and show tutorial after splash
+  useEffect(() => {
+    if (!showSplash && showTutorialOnStart) {
+      const hasSeenTutorial = localStorage.getItem('shapescanner_tutorial_seen');
+      if (!hasSeenTutorial) {
+        setShowTutorial(true);
+      }
+    }
+  }, [showSplash, showTutorialOnStart]);
+
+  // Save tutorial preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('shapescanner_show_tutorial', showTutorialOnStart.toString());
+  }, [showTutorialOnStart]);
+
+  const handleTutorialClose = () => {
+    setShowTutorial(false);
+    setTutorialStep(0);
+    localStorage.setItem('shapescanner_tutorial_seen', 'true');
+  };
+
+  const handleDontShowAgain = () => {
+    setShowTutorialOnStart(false);
+    handleTutorialClose();
+  };
+
+  const openTutorial = () => {
+    setTutorialStep(0);
+    setShowTutorial(true);
+  };
 
   // --- APP STATE ---
   const [step, setStep] = useState('capture');
@@ -2622,6 +2829,13 @@ const ShapeScanner = () => {
         </div>
         <div className="flex items-center gap-2">
             <button 
+                onClick={() => setShowSettingsMenu(true)} 
+                className="p-1.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                title="Settings"
+            >
+                <Settings size={18} />
+            </button>
+            <button 
                 onClick={() => setShowDebug(!showDebug)} 
                 className={`p-1 rounded ${showDebug ? 'bg-red-500 text-white' : 'text-neutral-600 hover:text-white'}`}
                 title="Debug Info"
@@ -2633,6 +2847,28 @@ const ShapeScanner = () => {
             </div>
         </div>
       </div>
+
+      {/* Tutorial Overlay */}
+      {showTutorial && (
+        <TutorialOverlay
+          currentStep={tutorialStep}
+          totalSteps={TUTORIAL_STEPS.length}
+          stepData={TUTORIAL_STEPS[tutorialStep]}
+          onNext={() => setTutorialStep(prev => Math.min(prev + 1, TUTORIAL_STEPS.length - 1))}
+          onPrev={() => setTutorialStep(prev => Math.max(prev - 1, 0))}
+          onClose={handleTutorialClose}
+          onDontShowAgain={handleDontShowAgain}
+        />
+      )}
+
+      {/* Settings Menu */}
+      <SettingsMenu
+        isOpen={showSettingsMenu}
+        onClose={() => setShowSettingsMenu(false)}
+        showTutorialOnStart={showTutorialOnStart}
+        setShowTutorialOnStart={setShowTutorialOnStart}
+        onOpenTutorial={openTutorial}
+      />
 
       {/* Save Dialog Modal */}
       {showSaveDialog && (
