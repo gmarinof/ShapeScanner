@@ -936,21 +936,41 @@ const ShapeScanner = () => {
     }
   }, [corners, step, imageSrc, imgDims, view, calMonochrome, calContrast]);
 
-  // --- OTSU AUTO DETECT ---
-  const autoDetectCorners = () => {
+  // --- OTSU AUTO DETECT (uses contrast-adjusted image) ---
+  const autoDetectCorners = useCallback(() => {
     if (!sourcePixelData.current) return;
-    const width = imgDims.w; const height = imgDims.h; const data = sourcePixelData.current;
+    const width = imgDims.w; const height = imgDims.h; const srcData = sourcePixelData.current;
+    
+    // Apply contrast adjustment to get the same view as the user sees
+    const contrastFactor = (calContrast / 100);
+    const applyContrast = (value) => {
+      const adjusted = ((value / 255 - 0.5) * contrastFactor + 0.5) * 255;
+      return Math.max(0, Math.min(255, adjusted));
+    };
+    
+    // Apply monochrome if enabled
+    const getLuminance = (r, g, b) => {
+      let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (calMonochrome) {
+        // Apply contrast to grayscale
+        lum = applyContrast(lum);
+      } else {
+        // Apply contrast to each channel then compute luminance
+        lum = 0.299 * applyContrast(r) + 0.587 * applyContrast(g) + 0.114 * applyContrast(b);
+      }
+      return lum;
+    };
     
     const histogram = new Array(256).fill(0);
     const step = 4;
-    for(let i=0; i<data.length; i+=4*step) {
-        const lum = Math.round(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
-        histogram[lum]++;
+    for(let i=0; i<srcData.length; i+=4*step) {
+        const lum = Math.round(getLuminance(srcData[i], srcData[i+1], srcData[i+2]));
+        histogram[Math.max(0, Math.min(255, lum))]++;
     }
 
     let sum = 0; for (let i = 0; i < 256; i++) sum += i * histogram[i];
     let sumB = 0; let wB = 0; let wF = 0; let maxVar = 0; let otsuThreshold = 0;
-    const total = (data.length / 4) / step;
+    const total = (srcData.length / 4) / step;
 
     for (let i = 0; i < 256; i++) {
         wB += histogram[i]; if (wB === 0) continue;
@@ -968,7 +988,7 @@ const ShapeScanner = () => {
     for (let y = padding; y < height - padding; y += step) {
       for (let x = padding; x < width - padding; x += step) {
         const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-        const brightness = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+        const brightness = getLuminance(srcData[i], srcData[i+1], srcData[i+2]);
         
         if (brightness > otsuThreshold) { 
           const sum = x + y; const diff = x - y;
@@ -980,7 +1000,7 @@ const ShapeScanner = () => {
       }
     }
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  };
+  }, [imgDims, calContrast, calMonochrome]);
 
 
   // --- POINT IN POLYGON TEST ---
@@ -2116,7 +2136,7 @@ const ShapeScanner = () => {
                                 <span>{calContrast}%</span>
                             </div>
                             <input 
-                                type="range" min="50" max="200" value={calContrast} 
+                                type="range" min="25" max="300" value={calContrast} 
                                 onChange={(e) => setCalContrast(Number(e.target.value))}
                                 className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                             />
