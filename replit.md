@@ -106,3 +106,7 @@ git push github main
   - "View Tutorial" button to replay anytime
   - "Don't show again" option to permanently disable
   - Preferences saved to localStorage
+- **Dark/Light theme toggle**:
+  - Toggle between dark and light interface in Settings menu
+  - Theme preference persisted to localStorage
+  - Header and main container adapt to theme selection

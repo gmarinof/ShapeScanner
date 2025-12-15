@@ -1089,30 +1089,43 @@ const TutorialOverlay = ({ currentStep, totalSteps, stepData, onNext, onPrev, on
 /**
  * SETTINGS MENU COMPONENT
  */
-const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnStart, onOpenTutorial }) => {
+const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnStart, onOpenTutorial, isDarkTheme, setIsDarkTheme }) => {
     if (!isOpen) return null;
     
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={onClose}>
-            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
-                <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <div className={`${isDarkTheme ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-neutral-300'} border rounded-2xl max-w-sm w-full shadow-2xl`} onClick={e => e.stopPropagation()}>
+                <div className={`p-4 border-b ${isDarkTheme ? 'border-neutral-800' : 'border-neutral-200'} flex items-center justify-between`}>
+                    <h2 className={`text-lg font-bold ${isDarkTheme ? 'text-white' : 'text-neutral-900'} flex items-center gap-2`}>
                         <Settings size={20} className="text-blue-400"/> Settings
                     </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
-                        <X size={20} className="text-neutral-400"/>
+                    <button onClick={onClose} className={`p-2 ${isDarkTheme ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'} rounded-lg transition-colors`}>
+                        <X size={20} className={isDarkTheme ? 'text-neutral-400' : 'text-neutral-600'}/>
                     </button>
                 </div>
                 
                 <div className="p-4 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-white">Show Tutorial on Start</p>
-                            <p className="text-xs text-neutral-500">Display walkthrough for new users</p>
+                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>Dark Theme</p>
+                            <p className={`text-xs ${isDarkTheme ? 'text-neutral-500' : 'text-neutral-500'}`}>Switch between dark and light mode</p>
+                        </div>
+                        <button 
+                            onClick={() => setIsDarkTheme(!isDarkTheme)}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${isDarkTheme ? 'bg-blue-600' : 'bg-neutral-300'}`}
+                        >
+                            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${isDarkTheme ? 'translate-x-6' : 'translate-x-1'}`}/>
+                        </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>Show Tutorial on Start</p>
+                            <p className={`text-xs ${isDarkTheme ? 'text-neutral-500' : 'text-neutral-500'}`}>Display walkthrough for new users</p>
                         </div>
                         <button 
                             onClick={() => setShowTutorialOnStart(!showTutorialOnStart)}
-                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : 'bg-neutral-700'}`}
+                            className={`w-12 h-7 rounded-full transition-colors relative ${showTutorialOnStart ? 'bg-blue-600' : isDarkTheme ? 'bg-neutral-700' : 'bg-neutral-300'}`}
                         >
                             <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${showTutorialOnStart ? 'translate-x-6' : 'translate-x-1'}`}/>
                         </button>
@@ -1120,14 +1133,14 @@ const SettingsMenu = ({ isOpen, onClose, showTutorialOnStart, setShowTutorialOnS
                     
                     <button 
                         onClick={() => { onOpenTutorial(); onClose(); }}
-                        className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                        className={`w-full py-3 rounded-xl ${isDarkTheme ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700' : 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300'} border ${isDarkTheme ? 'text-white' : 'text-neutral-900'} text-sm font-medium flex items-center justify-center gap-2 transition-colors`}
                     >
                         <BookOpen size={18}/> View Tutorial
                     </button>
                 </div>
                 
-                <div className="p-4 border-t border-neutral-800">
-                    <p className="text-[10px] text-neutral-600 text-center">ShapeScanner v1.0 • Hotwave studio</p>
+                <div className={`p-4 border-t ${isDarkTheme ? 'border-neutral-800' : 'border-neutral-200'}`}>
+                    <p className={`text-[10px] ${isDarkTheme ? 'text-neutral-600' : 'text-neutral-400'} text-center`}>ShapeScanner v1.0 • Hotwave studio</p>
                 </div>
             </div>
         </div>
@@ -1149,6 +1162,17 @@ const ShapeScanner = () => {
     return stored === null ? true : stored === 'true';
   });
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  
+  // --- THEME STATE ---
+  const [isDarkTheme, setIsDarkTheme] = useState(() => {
+    const stored = localStorage.getItem('shapescanner_dark_theme');
+    return stored === null ? true : stored === 'true';
+  });
+
+  // Save theme preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('shapescanner_dark_theme', isDarkTheme.toString());
+  }, [isDarkTheme]);
 
   // Check if first time user and show tutorial after splash
   useEffect(() => {
@@ -2819,30 +2843,30 @@ const ShapeScanner = () => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-neutral-200 font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col">
+    <div className={`fixed inset-0 ${isDarkTheme ? 'bg-black text-neutral-200' : 'bg-neutral-100 text-neutral-800'} font-sans overflow-hidden touch-none select-none h-[100dvh] flex flex-col`}>
       
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-neutral-900 border-b border-neutral-800 z-10 shrink-0">
+      <div className={`flex items-center justify-between p-4 ${isDarkTheme ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200'} border-b z-10 shrink-0`}>
         <div className="flex items-center gap-2">
            <RefreshCcw className="text-blue-500" size={20} onClick={() => setStep('capture')}/>
-           <h1 className="font-bold text-lg tracking-tight text-white">ShapeScanner</h1>
+           <h1 className={`font-bold text-lg tracking-tight ${isDarkTheme ? 'text-white' : 'text-neutral-900'}`}>ShapeScanner</h1>
         </div>
         <div className="flex items-center gap-2">
             <button 
                 onClick={() => setShowSettingsMenu(true)} 
-                className="p-1.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                className={`p-1.5 rounded ${isDarkTheme ? 'hover:bg-neutral-800 text-neutral-400 hover:text-white' : 'hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900'} transition-colors`}
                 title="Settings"
             >
                 <Settings size={18} />
             </button>
             <button 
                 onClick={() => setShowDebug(!showDebug)} 
-                className={`p-1 rounded ${showDebug ? 'bg-red-500 text-white' : 'text-neutral-600 hover:text-white'}`}
+                className={`p-1 rounded ${showDebug ? 'bg-red-500 text-white' : isDarkTheme ? 'text-neutral-600 hover:text-white' : 'text-neutral-400 hover:text-neutral-900'}`}
                 title="Debug Info"
             >
                 <Bug size={16} />
             </button>
-            <div className="text-xs font-mono bg-neutral-800 px-2 py-1 rounded text-neutral-400">
+            <div className={`text-xs font-mono ${isDarkTheme ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-600'} px-2 py-1 rounded`}>
                 {step.toUpperCase()}
             </div>
         </div>
@@ -2868,6 +2892,8 @@ const ShapeScanner = () => {
         showTutorialOnStart={showTutorialOnStart}
         setShowTutorialOnStart={setShowTutorialOnStart}
         onOpenTutorial={openTutorial}
+        isDarkTheme={isDarkTheme}
+        setIsDarkTheme={setIsDarkTheme}
       />
 
       {/* Save Dialog Modal */}
