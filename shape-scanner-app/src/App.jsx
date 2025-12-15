@@ -1936,11 +1936,11 @@ const ShapeScanner = () => {
             });
             
             if (matchingPrev && matchingPrev.settings) {
-              // Preserve the previous polygon's settings and pixelBbox
+              // Preserve the previous polygon's settings but ALWAYS use new pixelBbox
+              // The pixelBbox must match the current detection, not the old one
               return {
                 ...newPoly,
                 id: matchingPrev.id,
-                pixelBbox: matchingPrev.pixelBbox || newPoly.pixelBbox,
                 settings: { ...matchingPrev.settings },
                 needsReprocess: false
               };
