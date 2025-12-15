@@ -1937,9 +1937,9 @@ const ShapeScanner = () => {
           });
         });
         
-        // For backwards compatibility, also set the primary polygon
+        // For backwards compatibility, also set the primary polygon (always use first on initial detect)
         if (refinedPolygons.length > 0) {
-          const primary = refinedPolygons[selectedPolygonIndex] || refinedPolygons[0];
+          const primary = refinedPolygons[0];
           setProcessedPath(primary.outer);
           setObjectDims({ 
             width: primary.bbox.maxX - primary.bbox.minX, 
@@ -1947,6 +1947,7 @@ const ShapeScanner = () => {
             ...primary.bbox 
           });
           setDetectedShapeType(primary.type);
+          setSelectedPolygonIndex(0);
         } else {
           setProcessedPath([]); setObjectDims(null); setDetectedShapeType(null);
           setDetectedPolygons([]);
@@ -1965,7 +1966,7 @@ const ShapeScanner = () => {
     
     setIsProcessing(false);
 
-  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter, selectedPolygonIndex]);
+  }, [imageSrc, corners, paperWidth, paperHeight, threshold, scanStep, curveSmoothing, imgDims, segmentMode, targetColor, selectionBox, showMask, invertResult, viewMode, calculatedRefColor, smartRefine, shadowRemoval, noiseFilter]);
 
   // Reprocess a single polygon - applies smoothing and shape fitting only
   const reprocessPolygon = useCallback((polygonIndex) => {
@@ -2228,6 +2229,22 @@ const ShapeScanner = () => {
       return () => clearTimeout(timer);
     }
   }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection]);
+
+  // Effect to update display when polygon selection changes (without reprocessing)
+  useEffect(() => {
+    if (detectedPolygons.length > 0 && detectedPolygons[selectedPolygonIndex]) {
+      const poly = detectedPolygons[selectedPolygonIndex];
+      setProcessedPath(poly.outer);
+      if (poly.outer && poly.outer.length > 0) {
+        const minX = Math.min(...poly.outer.map(p => p.x));
+        const maxX = Math.max(...poly.outer.map(p => p.x));
+        const minY = Math.min(...poly.outer.map(p => p.y));
+        const maxY = Math.max(...poly.outer.map(p => p.y));
+        setObjectDims({ width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY });
+      }
+      setDetectedShapeType(poly.type);
+    }
+  }, [selectedPolygonIndex, detectedPolygons]);
 
   useEffect(() => {
     if (step === 'process') {

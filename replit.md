@@ -73,6 +73,10 @@ git push github main
   - Uses `needsDetectionReprocess` flag for detection settings changes
   - Uses `needsReprocess` flag for vector-only settings changes
   - `unwarpedBufferRef` stores the grayscale buffer for per-polygon ROI reprocessing
+- **Fixed per-polygon settings persistence**: Settings now properly persist when switching between polygons
+  - Removed `selectedPolygonIndex` from processImage dependencies to prevent full re-detection on polygon switch
+  - Added separate lightweight effect for polygon selection display updates
+  - Each polygon maintains independent settings even after switching away and back
 - **Improved corner detection with Canny edge detection**:
   - New `EdgeDetector` class with Sobel gradient computation
   - Gaussian blur with mirror boundary handling
