@@ -99,3 +99,10 @@ git push github main
 - **UI improvements**:
   - Per-polygon settings now in collapsible "Advanced" menu to reduce clutter
   - Added "Hotwave studio" branding to splash screen
+- **Tutorial system for first-time users**:
+  - 7-step walkthrough covering all app features
+  - Automatically shows for first-time users after splash screen
+  - Settings menu (gear icon in header) to toggle tutorial on/off
+  - "View Tutorial" button to replay anytime
+  - "Don't show again" option to permanently disable
+  - Preferences saved to localStorage
