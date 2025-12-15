@@ -2401,6 +2401,8 @@ const ShapeScanner = () => {
   const fileInputRef = useRef(null);
   const sourcePixelData = useRef(null); 
   const unwarpedBufferRef = useRef(null);
+  const prevViewModeRef = useRef(null);
+  const detectedPolygonsRef = useRef([]);
 
   // --- HELPER: Coordinate Mapping ---
   const toImageCoords = (screenX, screenY) => ({
@@ -3125,9 +3127,17 @@ const ShapeScanner = () => {
     
     unwarpedBufferRef.current = { width: targetW, height: targetH, data: rawBuffer };
 
-    // Multi-polygon detection with holes - always run to initialize polygon settings
-    // (Previously only ran when viewMode !== 'original', but that delayed settings initialization)
-    {
+    // Skip polygon detection if only viewMode changed and we already have polygons with settings
+    const viewModeOnlyChanged = prevViewModeRef.current !== null && 
+                                 prevViewModeRef.current !== viewMode;
+    prevViewModeRef.current = viewMode;
+    
+    // Check if we have existing polygons with custom settings (not default) - use ref to avoid dependency
+    const hasExistingPolygonsWithSettings = detectedPolygonsRef.current.length > 0 && 
+                                             detectedPolygonsRef.current.some(p => p.settings);
+    
+    // Multi-polygon detection with holes - skip if only viewMode changed and we have existing polygons
+    if (!viewModeOnlyChanged || !hasExistingPolygonsWithSettings) {
         // In precision mode, mask out the corner marker regions
         if (scanMode === 'precision') {
           const scanArea = getCalibrationScanArea(calibrationSize);
@@ -3640,6 +3650,11 @@ const ShapeScanner = () => {
       return () => clearTimeout(timer);
     }
   }, [detectedPolygons, reprocessPolygon, reprocessPolygonDetection, selectedPolygonIndex]);
+
+  // Sync detectedPolygonsRef with state (for use in processImage without adding to deps)
+  useEffect(() => {
+    detectedPolygonsRef.current = detectedPolygons;
+  }, [detectedPolygons]);
 
   // Effect to update display when polygon selection changes (without reprocessing)
   useEffect(() => {
