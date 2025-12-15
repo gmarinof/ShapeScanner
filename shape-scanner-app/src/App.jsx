@@ -2644,20 +2644,24 @@ const ShapeScanner = () => {
     
     console.log('Auto-detect running with contrast:', calContrast, 'paper color:', paperColor, 'scanMode:', scanMode);
     
-    // If in precision mode, try calibration marker detection first
+    // If in precision mode, ONLY use marker detection (no fallback to paper edge)
     if (scanMode === 'precision') {
-      console.log('Precision mode: attempting calibration marker detection...');
-      const markerCorners = EdgeDetector.detectCalibrationMarkers(adjustedData, width, height);
+      console.log('Precision mode: detecting calibration markers only...');
+      // Use RAW image data for marker detection (not contrast-adjusted) for better accuracy
+      const markerCorners = EdgeDetector.detectCalibrationMarkers(srcData, width, height);
       
       if (markerCorners && markerCorners.length === 4) {
         console.log('Calibration markers detected successfully!');
         setCorners(markerCorners);
         return;
       }
-      console.log('Marker detection failed, falling back to edge detection');
+      // In precision mode, don't fall back - user must use calibration markers
+      console.log('Marker detection failed - please ensure all 4 L-shaped corner markers are visible');
+      alert('Could not detect calibration markers. Please ensure:\n\n1. All 4 L-shaped corner markers are visible\n2. Good lighting without shadows on markers\n3. Camera is positioned to see entire calibration page');
+      return;
     }
     
-    // Try edge-based detection (more accurate for paper boundaries)
+    // Quick scan mode: Try edge-based detection (more accurate for paper boundaries)
     const edgeCorners = EdgeDetector.detectPaperCorners(adjustedData, width, height, paperColor);
     
     console.log('Edge detection result:', edgeCorners);
