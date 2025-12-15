@@ -743,7 +743,10 @@ class EdgeDetector {
 
   // Find 4 corners from a contour using corner detection
   static findQuadrilateralCorners(contour, width, height) {
-    if (contour.length < 10) return null;
+    if (contour.length < 4) {
+      console.log('Contour too short:', contour.length);
+      return null;
+    }
     
     // Method 1: Convex hull + extremes approach
     // Find the 4 extreme points (TL, TR, BR, BL)
@@ -761,7 +764,10 @@ class EdgeDetector {
       if (diff < minDiff) { minDiff = diff; bl = { ...p }; }
     }
     
-    if (!tl || !tr || !br || !bl) return null;
+    if (!tl || !tr || !br || !bl) {
+      console.log('Missing corners:', { tl, tr, br, bl });
+      return null;
+    }
     
     // Validate: corners should form a reasonable quadrilateral
     const corners = [tl, tr, br, bl];
@@ -769,7 +775,11 @@ class EdgeDetector {
     // Check minimum area (at least 5% of image area)
     const area = this.polygonArea(corners);
     const minArea = width * height * 0.05;
-    if (area < minArea) return null;
+    console.log('Corner validation - area:', area, 'minArea:', minArea);
+    if (area < minArea) {
+      console.log('Area too small');
+      return null;
+    }
     
     // Check that corners are reasonably spread apart
     const distances = [];
@@ -781,13 +791,21 @@ class EdgeDetector {
     }
     const minDist = Math.min(...distances);
     const maxDist = Math.max(...distances);
+    console.log('Edge distances:', distances, 'ratio:', maxDist / minDist);
     
     // Sides should be roughly similar in length (ratio < 5:1)
-    if (maxDist / minDist > 5) return null;
+    if (maxDist / minDist > 5) {
+      console.log('Edge ratio too large');
+      return null;
+    }
     
     // Check convexity
-    if (!this.isConvex(corners)) return null;
+    if (!this.isConvex(corners)) {
+      console.log('Not convex');
+      return null;
+    }
     
+    console.log('Valid corners found:', corners);
     return corners;
   }
 
