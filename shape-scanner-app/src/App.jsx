@@ -1346,19 +1346,44 @@ const ShapeScanner = () => {
     if (!sourcePixelData.current) return;
     const width = imgDims.w; const height = imgDims.h; const srcData = sourcePixelData.current;
     
+    // Apply contrast adjustment to match what user sees
+    const contrastFactor = calContrast / 100;
+    const applyContrast = (value) => {
+      const adjusted = ((value / 255 - 0.5) * contrastFactor + 0.5) * 255;
+      return Math.max(0, Math.min(255, adjusted));
+    };
+    
+    // Create contrast-adjusted copy of the image data for detection
+    const adjustedData = new Uint8ClampedArray(srcData.length);
+    for (let i = 0; i < srcData.length; i += 4) {
+      adjustedData[i] = applyContrast(srcData[i]);
+      adjustedData[i + 1] = applyContrast(srcData[i + 1]);
+      adjustedData[i + 2] = applyContrast(srcData[i + 2]);
+      adjustedData[i + 3] = srcData[i + 3];
+    }
+    
+    console.log('Auto-detect running with contrast:', calContrast, 'paper color:', paperColor);
+    
     // Try edge-based detection first (more accurate for paper boundaries)
-    const edgeCorners = EdgeDetector.detectPaperCorners(srcData, width, height, paperColor);
+    const edgeCorners = EdgeDetector.detectPaperCorners(adjustedData, width, height, paperColor);
+    
+    console.log('Edge detection result:', edgeCorners);
     
     if (edgeCorners && edgeCorners.length === 4) {
       // Validate the detected corners
       const area = EdgeDetector.polygonArea(edgeCorners);
       const minArea = width * height * 0.05;
       
+      console.log('Corner validation - area:', area, 'minArea:', minArea, 'isConvex:', EdgeDetector.isConvex(edgeCorners));
+      
       if (area >= minArea && EdgeDetector.isConvex(edgeCorners)) {
+        console.log('Using edge-detected corners');
         setCorners(edgeCorners);
         return;
       }
     }
+    
+    console.log('Falling back to color-distance detection');
     
     // Fallback to color-distance based detection if edge detection fails
     const getColorDistance = (r, g, b) => {
@@ -1369,8 +1394,8 @@ const ShapeScanner = () => {
     const maxDist = 442; // sqrt(255^2 * 3)
     const histogram = new Array(256).fill(0);
     const step = 4;
-    for(let i=0; i<srcData.length; i+=4*step) {
-        const dist = getColorDistance(srcData[i], srcData[i+1], srcData[i+2]);
+    for(let i=0; i<adjustedData.length; i+=4*step) {
+        const dist = getColorDistance(adjustedData[i], adjustedData[i+1], adjustedData[i+2]);
         const normalized = Math.round((dist / maxDist) * 255);
         histogram[Math.max(0, Math.min(255, normalized))]++;
     }
@@ -1378,7 +1403,7 @@ const ShapeScanner = () => {
     // Otsu's method on color distance histogram
     let sum = 0; for (let i = 0; i < 256; i++) sum += i * histogram[i];
     let sumB = 0; let wB = 0; let wF = 0; let maxVar = 0; let otsuThreshold = 0;
-    const total = (srcData.length / 4) / step;
+    const total = (adjustedData.length / 4) / step;
 
     for (let i = 0; i < 256; i++) {
         wB += histogram[i]; if (wB === 0) continue;
@@ -1391,6 +1416,7 @@ const ShapeScanner = () => {
     
     // Convert back to actual distance threshold
     const distThreshold = (otsuThreshold / 255) * maxDist;
+    console.log('Otsu threshold:', otsuThreshold, 'distThreshold:', distThreshold);
 
     let tl = { val: Infinity, x: 0, y: 0 }; let tr = { val: -Infinity, x: 0, y: 0 };
     let br = { val: -Infinity, x: 0, y: 0 }; let bl = { val: Infinity, x: 0, y: 0 };
@@ -1399,7 +1425,7 @@ const ShapeScanner = () => {
     for (let y = padding; y < height - padding; y += step) {
       for (let x = padding; x < width - padding; x += step) {
         const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-        const dist = getColorDistance(srcData[i], srcData[i+1], srcData[i+2]);
+        const dist = getColorDistance(adjustedData[i], adjustedData[i+1], adjustedData[i+2]);
         
         // Pixel is "paper" if its color is close to the selected paper color
         if (dist < distThreshold) { 
@@ -1411,8 +1437,9 @@ const ShapeScanner = () => {
         }
       }
     }
+    console.log('Fallback corners found:', tl.val !== Infinity ? 'yes' : 'no');
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  }, [imgDims, paperColor]);
+  }, [imgDims, paperColor, calContrast]);
 
 
   // --- POINT IN POLYGON TEST ---
