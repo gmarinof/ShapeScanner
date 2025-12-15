@@ -809,20 +809,45 @@ class EdgeDetector {
 
   // Main function: detect paper corners from image
   static detectPaperCorners(srcData, width, height, paperColor = null) {
-    // Run Canny edge detection
-    const { edges } = this.cannyEdgeDetection(srcData, width, height, paperColor, 0.04, 0.12);
+    // Try multiple threshold settings for robustness
+    const thresholdConfigs = [
+      { low: 0.03, high: 0.10 },  // More sensitive
+      { low: 0.02, high: 0.08 },  // Even more sensitive
+      { low: 0.05, high: 0.15 },  // Standard
+    ];
     
-    // Trace the largest edge contour
-    const contour = this.traceEdgeContour(edges, width, height);
-    if (contour.length < 50) return null;
+    for (const config of thresholdConfigs) {
+      // Run Canny edge detection with current thresholds
+      const { edges } = this.cannyEdgeDetection(srcData, width, height, paperColor, config.low, config.high);
+      
+      // Count edge pixels for debugging
+      let edgeCount = 0;
+      for (let i = 0; i < edges.length; i++) {
+        if (edges[i] === 1) edgeCount++;
+      }
+      console.log(`Edge detection with thresholds (${config.low}, ${config.high}): ${edgeCount} edge pixels`);
+      
+      // Trace the largest edge contour
+      const contour = this.traceEdgeContour(edges, width, height);
+      console.log(`Contour length: ${contour.length}`);
+      
+      if (contour.length < 30) continue; // Try next threshold config
+      
+      // Simplify the contour
+      const simplified = this.simplifyContour(contour, 3);
+      console.log(`Simplified contour length: ${simplified.length}`);
+      
+      // Find quadrilateral corners
+      const corners = this.findQuadrilateralCorners(simplified, width, height);
+      
+      if (corners) {
+        console.log('Found valid corners with config:', config);
+        return corners;
+      }
+    }
     
-    // Simplify the contour
-    const simplified = this.simplifyContour(contour, 5);
-    
-    // Find quadrilateral corners
-    const corners = this.findQuadrilateralCorners(simplified, width, height);
-    
-    return corners;
+    console.log('Edge detection failed with all threshold configs');
+    return null;
   }
 }
 
