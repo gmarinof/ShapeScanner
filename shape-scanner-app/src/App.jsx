@@ -644,40 +644,53 @@ class EdgeDetector {
     return { edges, magnitude, maxMag };
   }
 
-  // Trace largest connected edge contour using 8-connectivity
+  // Trace edge contour in order using boundary following (Moore neighborhood)
   static traceEdgeContour(edges, width, height) {
     const visited = new Uint8Array(width * height);
     const contours = [];
+    // 8-connectivity directions: clockwise from right
     const DIRS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
     
+    // Find all starting points and trace ordered contours
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const idx = y * width + x;
         if (edges[idx] === 1 && visited[idx] === 0) {
-          // Start a new contour
+          // Moore boundary tracing - follows contour in order
           const contour = [];
-          const stack = [[x, y]];
+          let cx = x, cy = y;
+          let dir = 0; // Start looking right
+          const startX = x, startY = y;
+          let steps = 0;
+          const maxSteps = width * height;
           
-          while (stack.length > 0) {
-            const [cx, cy] = stack.pop();
-            const cidx = cy * width + cx;
-            if (visited[cidx]) continue;
-            if (edges[cidx] !== 1) continue;
-            
-            visited[cidx] = 1;
+          do {
             contour.push({ x: cx, y: cy });
+            visited[cy * width + cx] = 1;
             
-            // Add connected edge pixels
-            for (const [dx, dy] of DIRS) {
-              const nx = cx + dx, ny = cy + dy;
+            // Look for next edge pixel, starting from direction opposite to where we came from
+            let found = false;
+            const startDir = (dir + 5) % 8; // Start search from dir+5 (backtrack + 1 CCW)
+            
+            for (let i = 0; i < 8; i++) {
+              const checkDir = (startDir + i) % 8;
+              const nx = cx + DIRS[checkDir][0];
+              const ny = cy + DIRS[checkDir][1];
+              
               if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                const nidx = ny * width + nx;
-                if (edges[nidx] === 1 && !visited[nidx]) {
-                  stack.push([nx, ny]);
+                if (edges[ny * width + nx] === 1) {
+                  cx = nx;
+                  cy = ny;
+                  dir = checkDir;
+                  found = true;
+                  break;
                 }
               }
             }
-          }
+            
+            if (!found) break;
+            steps++;
+          } while ((cx !== startX || cy !== startY) && steps < maxSteps);
           
           if (contour.length > 50) {
             contours.push(contour);
