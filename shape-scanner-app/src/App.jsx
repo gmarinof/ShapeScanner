@@ -1022,14 +1022,17 @@ class EdgeDetector {
       return null;
     }
     
+    // Sort corners by geometry (TL→TR→BR→BL) regardless of which ROI they were found in
+    const sortedCorners = this.sortCornersClockwise(foundCorners);
+    
     // Validate using known aspect ratio
-    if (!this.validateMarkersWithAspectRatio(foundCorners, config.aspectRatio)) {
+    if (!this.validateMarkersWithAspectRatio(sortedCorners, config.aspectRatio)) {
       console.log('Markers failed aspect ratio validation');
       return null;
     }
     
     console.log('All 4 markers found and validated with geometry constraint!');
-    return foundCorners;
+    return sortedCorners;
   }
 
   // Find marker in a constrained ROI around expected position
@@ -1139,19 +1142,24 @@ class EdgeDetector {
     
     console.log('Broad search marker results:', corners.map((c, i) => c ? `${['tl','tr','br','bl'][i]}:found` : `${['tl','tr','br','bl'][i]}:null`).join(', '));
     
-    if (!corners.every(c => c !== null)) {
+    // Filter out nulls and check if we have 4 markers
+    const validCorners = corners.filter(c => c !== null);
+    if (validCorners.length !== 4) {
       console.log('Broad search failed - not all markers found');
       return null;
     }
     
+    // Sort corners by geometry (TL→TR→BR→BL) regardless of which quadrant they were found in
+    const sortedCorners = this.sortCornersClockwise(validCorners);
+    
     // Validate with aspect ratio
-    if (!this.validateMarkersWithAspectRatio(corners, config.aspectRatio)) {
+    if (!this.validateMarkersWithAspectRatio(sortedCorners, config.aspectRatio)) {
       console.log('Broad search markers failed aspect ratio validation');
       return null;
     }
     
     // Additional validation: area and convexity
-    const area = this.polygonArea(corners);
+    const area = this.polygonArea(sortedCorners);
     const minArea = width * height * 0.15;
     const maxArea = width * height * 0.95;
     
@@ -1160,13 +1168,13 @@ class EdgeDetector {
       return null;
     }
     
-    if (!this.isConvex(corners)) {
+    if (!this.isConvex(sortedCorners)) {
       console.log('Broad search markers not convex');
       return null;
     }
     
     console.log('Broad search found all 4 markers with validation!');
-    return corners;
+    return sortedCorners;
   }
   
   // Find marker in quadrant with adaptive per-quadrant thresholding
@@ -1762,6 +1770,7 @@ class EdgeDetector {
   }
 
   // Analyze a region to find the inner corner of an L-shape using skeletonization
+  // Now orientation-agnostic: finds ANY valid L-shape, doesn't require specific sparse quadrant
   static findLShapeCorner(region, binary, imgWidth, imgHeight, position) {
     const { bbox, pixels } = region;
     const w = bbox.maxX - bbox.minX + 1;
@@ -1793,23 +1802,21 @@ class EdgeDetector {
     const total = pixels.length;
     const ratios = [tlCount/total, trCount/total, blCount/total, brCount/total];
     const minRatio = Math.min(...ratios);
-    const sparseCount = ratios.filter(r => r < 0.15).length; // Relaxed from 0.12
-    const denseCount = ratios.filter(r => r > 0.15).length; // Relaxed from 0.18
+    const sparseCount = ratios.filter(r => r < 0.15).length;
+    const denseCount = ratios.filter(r => r > 0.15).length;
     
     // Log quadrant analysis for debugging
     console.log(`L-shape ${position}: ratios=[${ratios.map(r => r.toFixed(2)).join(',')}], sparse=${sparseCount}, dense=${denseCount}`);
     
-    if (sparseCount !== 1 || denseCount < 2 || minRatio > 0.12) return null; // Relaxed from 0.10
+    // L-shape must have exactly 1 sparse quadrant and at least 2 dense
+    // REMOVED: strict orientation check - now orientation-agnostic
+    if (sparseCount < 1 || denseCount < 2 || minRatio > 0.15) return null;
     
-    // Find which quadrant is sparse
+    // Find which quadrant is sparse (for intersection validation only)
     const sparseQuadrant = 
       ratios[0] === minRatio ? 'tl' :
       ratios[1] === minRatio ? 'tr' :
       ratios[2] === minRatio ? 'bl' : 'br';
-    
-    // Validate sparse quadrant matches expected position
-    const expectedSparse = { tl: 'br', tr: 'bl', br: 'tl', bl: 'tr' };
-    if (sparseQuadrant !== expectedSparse[position]) return null;
     
     // Add padding around the blob to prevent skeletonization edge artifacts
     const padding = 3;
@@ -1945,19 +1952,8 @@ class EdgeDetector {
     const globalX = localIntersection.x - padding + bbox.minX;
     const globalY = localIntersection.y - padding + bbox.minY;
     
-    // The intersection should be in the OPPOSITE quadrant from sparse (where the two legs meet)
-    const oppositeQuadrant = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' };
-    const targetQuadrant = oppositeQuadrant[sparseQuadrant];
-    const inCorrectQuadrant = 
-      (targetQuadrant === 'tl' && globalX < midX && globalY < midY) ||
-      (targetQuadrant === 'tr' && globalX >= midX && globalY < midY) ||
-      (targetQuadrant === 'bl' && globalX < midX && globalY >= midY) ||
-      (targetQuadrant === 'br' && globalX >= midX && globalY >= midY);
-    
-    if (!inCorrectQuadrant) {
-      console.log(`L-shape reject in ${position}: intersection not in correct quadrant (expected ${targetQuadrant})`);
-      return null;
-    }
+    // REMOVED: strict quadrant validation - now orientation-agnostic
+    // The intersection should be somewhere inside or near the blob bounding box
     
     // Validate intersection is within reasonable bounds
     const margin = Math.max(w, h) * 0.3;

@@ -140,6 +140,11 @@ git push github main
   - Per-polygon settings now available from the start
 
 ### Dec 16, 2024
+- **Orientation-agnostic L-shape detection**: Marker detection no longer requires L-shapes to be in specific orientations
+  - Works with rotated papers and non-optimal camera angles
+  - Finds ANY valid L-shape in each search region
+  - Uses geometric sorting (polar angle from centroid) to determine TL/TR/BR/BL after finding all 4 markers
+  - Removed strict quadrant-matching requirement that was causing failures
 - **Removed hole detection**: All detected shapes are now treated as independent polygons
   - Internal regions (previously holes) are now detected as separate polygon shapes
   - Simplified DXF/SVG export (no more hole layers)
