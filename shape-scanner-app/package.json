@@ -16,6 +16,7 @@
     "@capacitor/core": "^8.0.0",
     "@capacitor/filesystem": "^8.0.0",
     "@tailwindcss/vite": "^4.1.18",
+    "apriltag": "^2.0.3",
     "lucide-react": "^0.560.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
