@@ -197,90 +197,6 @@ class ContourTracer {
     return contour;
   }
 
-  // Find holes by detecting enclosed background regions - with proper component ownership check
-  static findHoles(mask, labels, componentLabel, width, height, bbox) {
-    const holes = [];
-    const { minX, maxX, minY, maxY } = bbox;
-    const visited = new Uint8Array(width * height);
-    
-    // Mark all background connected to image border as external
-    const externalQueue = [];
-    for (let x = 0; x < width; x++) {
-      if (mask[x] === 0 && visited[x] === 0) { externalQueue.push([x, 0]); visited[x] = 2; }
-      const bottomIdx = (height-1) * width + x;
-      if (mask[bottomIdx] === 0 && visited[bottomIdx] === 0) { externalQueue.push([x, height-1]); visited[bottomIdx] = 2; }
-    }
-    for (let y = 0; y < height; y++) {
-      const leftIdx = y * width;
-      const rightIdx = y * width + width - 1;
-      if (mask[leftIdx] === 0 && visited[leftIdx] === 0) { externalQueue.push([0, y]); visited[leftIdx] = 2; }
-      if (mask[rightIdx] === 0 && visited[rightIdx] === 0) { externalQueue.push([width-1, y]); visited[rightIdx] = 2; }
-    }
-    
-    // Flood-fill external background (4-connectivity)
-    while (externalQueue.length > 0) {
-      const [cx, cy] = externalQueue.shift();
-      for (const [dx, dy] of this.DIRS4) {
-        const nx = cx + dx, ny = cy + dy;
-        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-        const nidx = ny * width + nx;
-        if (mask[nidx] === 0 && visited[nidx] === 0) {
-          visited[nidx] = 2;
-          externalQueue.push([nx, ny]);
-        }
-      }
-    }
-    
-    // Find internal background regions (holes) within component bounding box
-    for (let y = minY + 1; y < maxY; y++) {
-      for (let x = minX + 1; x < maxX; x++) {
-        const idx = y * width + x;
-        if (mask[idx] === 0 && visited[idx] === 0) {
-          const holePixels = [];
-          const boundaryLabels = new Set();
-          const queue = [[x, y]];
-          let isEnclosed = true;
-          
-          while (queue.length > 0) {
-            const [cx, cy] = queue.shift();
-            const cidx = cy * width + cx;
-            if (cx < 0 || cx >= width || cy < 0 || cy >= height) { isEnclosed = false; continue; }
-            if (visited[cidx] !== 0) { if (visited[cidx] === 2) isEnclosed = false; continue; }
-            if (mask[cidx] === 1) continue; // Skip foreground pixels
-            
-            visited[cidx] = 1;
-            holePixels.push({ x: cx, y: cy });
-            
-            // Check all 4 neighbors and collect boundary labels from foreground neighbors
-            for (const [dx, dy] of this.DIRS4) {
-              const nx = cx + dx, ny = cy + dy;
-              if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-              const nidx = ny * width + nx;
-              if (mask[nidx] === 1) {
-                // This neighbor is foreground - record its component label
-                if (labels[nidx] !== 0) boundaryLabels.add(labels[nidx]);
-              } else if (visited[nidx] === 0) {
-                // This neighbor is background and unvisited - add to queue
-                queue.push([nx, ny]);
-              }
-            }
-          }
-          
-          // Accept hole if enclosed AND either: 
-          // 1. Bordered exclusively by the target component, OR
-          // 2. Has no boundary labels but is enclosed (fully interior hole)
-          const isOwnedByComponent = boundaryLabels.size === 0 || 
-            (boundaryLabels.size === 1 && boundaryLabels.has(componentLabel));
-          
-          if (isEnclosed && isOwnedByComponent && holePixels.length > 10) {
-            holes.push(holePixels);
-          }
-        }
-      }
-    }
-    return holes;
-  }
-
   // Simplify contour by sampling points at intervals
   static simplifyContour(contour, step = 2) {
     if (contour.length < 10) return contour;
@@ -347,45 +263,8 @@ class ContourTracer {
         outerContour.push({ ...outerContour[0] });
       }
 
-      // Find and trace holes
-      const holes = this.findHoles(mask, labels, component.label, width, height, component.bbox);
-      const holeContours = [];
-
-      for (const holePixels of holes) {
-        if (holePixels.length < 5) continue;
-        let startHole = holePixels[0];
-        for (const p of holePixels) {
-          if (p.y < startHole.y || (p.y === startHole.y && p.x < startHole.x)) startHole = p;
-        }
-        
-        // Create temporary mask for hole tracing
-        const holeMask = new Uint8Array(width * height);
-        holePixels.forEach(p => { holeMask[p.y * width + p.x] = 1; });
-        
-        // Use 4-connectivity for hole tracing to prevent diagonal leakage
-        const holeBoundary = this.traceBoundary4(holeMask, width, height, startHole.x, startHole.y, null, null);
-        if (holeBoundary.length < 5) continue;
-        
-        const holeSimplified = this.simplifyContour(holeBoundary, scanStep);
-        let holeContour = holeSimplified.map(p => ({
-          x: (p.x / width) * paperWidth,
-          y: ((height - p.y) / height) * paperHeight
-        }));
-        
-        // Ensure hole contour is clockwise (negative area = CW = hole in CAD convention)
-        if (this.signedArea(holeContour) > 0) {
-          holeContour = this.reverseContour(holeContour);
-        }
-        
-        if (holeContour.length > 0) {
-          holeContour.push({ ...holeContour[0] });
-          holeContours.push(holeContour);
-        }
-      }
-
       polygons.push({
         outer: outerContour,
-        holes: holeContours,
         bbox: {
           minX: (component.bbox.minX / width) * paperWidth,
           maxX: (component.bbox.maxX / width) * paperWidth,
@@ -2282,8 +2161,7 @@ const ShapeScanner = () => {
     noiseFilter: 2,
     shadowRemoval: 0,
     smartRefine: true,
-    invertResult: false,
-    showHoles: true
+    invertResult: false
   };
   
   // Helper to get current polygon's settings or global defaults
@@ -2291,7 +2169,7 @@ const ShapeScanner = () => {
     if (detectedPolygons.length > 0 && detectedPolygons[selectedPolygonIndex]?.settings) {
       return detectedPolygons[selectedPolygonIndex].settings;
     }
-    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
+    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
   }, [detectedPolygons, selectedPolygonIndex, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
   // Get current settings based on scope
@@ -2299,7 +2177,7 @@ const ShapeScanner = () => {
     if (settingsScope === 'polygon' && detectedPolygons.length > 0 && detectedPolygons[selectedPolygonIndex]?.settings) {
       return detectedPolygons[selectedPolygonIndex].settings;
     }
-    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
+    return { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
   }, [settingsScope, detectedPolygons, selectedPolygonIndex, threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult]);
   
   // Update settings based on current scope
@@ -2341,7 +2219,7 @@ const ShapeScanner = () => {
   // Apply current global settings to all polygons
   const applyGlobalToAll = useCallback(() => {
     if (detectedPolygons.length === 0) return;
-    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
+    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
     setDetectedPolygons(prev => prev.map(poly => ({
       ...poly,
       settings: { ...globalSettings },
@@ -2352,7 +2230,7 @@ const ShapeScanner = () => {
   // Reset selected polygon to global defaults
   const resetPolygonToDefaults = useCallback(() => {
     if (detectedPolygons.length === 0) return;
-    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult, showHoles: true };
+    const globalSettings = { threshold, scanStep, curveSmoothing, noiseFilter, shadowRemoval, smartRefine, invertResult };
     setDetectedPolygons(prev => {
       const updated = [...prev];
       if (updated[selectedPolygonIndex]) {
@@ -3183,21 +3061,6 @@ const ShapeScanner = () => {
             }
           }
           
-          // Refine holes as well
-          const refinedHoles = poly.holes.map(hole => {
-            let holePoints = hole;
-            if (smartRefine) {
-              const holeFit = ShapeFitter.fitCircle(hole);
-              if (holeFit) {
-                holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
-              } else {
-                holePoints = VectorUtils.simplify(holePoints, 0.5);
-                holePoints = VectorUtils.smooth(holePoints, curveSmoothing);
-              }
-            }
-            return holePoints;
-          });
-          
           // Calculate pixel-space bounding box for per-polygon reprocessing
           const pixelBbox = {
             minX: Math.floor((poly.bbox.minX / paperWidth) * targetW),
@@ -3209,12 +3072,10 @@ const ShapeScanner = () => {
           return {
             id: Date.now() + Math.random(),
             outer: outerPoints,
-            holes: refinedHoles,
             bbox: poly.bbox,
             pixelBbox,
             type: detected,
             rawOuter: poly.outer,
-            rawHoles: poly.holes,
             settings: {
               threshold,
               scanStep,
@@ -3222,8 +3083,7 @@ const ShapeScanner = () => {
               noiseFilter,
               shadowRemoval,
               smartRefine,
-              invertResult,
-              showHoles: true
+              invertResult
             },
             needsReprocess: false
           };
@@ -3315,32 +3175,12 @@ const ShapeScanner = () => {
       outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
     }
     
-    // Process holes
-    const rawHoles = poly.rawHoles || poly.holes;
-    const refinedHoles = rawHoles.map(hole => {
-      let holePoints = [...hole];
-      if (polySmartRefine) {
-        const holeFit = ShapeFitter.fitCircle(hole);
-        if (holeFit) {
-          holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
-        } else {
-          holePoints = VectorUtils.simplify(holePoints, 0.5);
-          holePoints = VectorUtils.smooth(holePoints, polyCurve);
-        }
-      } else {
-        holePoints = VectorUtils.simplify(holePoints, 0.5);
-        holePoints = VectorUtils.smooth(holePoints, polyCurve);
-      }
-      return holePoints;
-    });
-    
     // Update the polygon
     setDetectedPolygons(prev => {
       const updated = [...prev];
       updated[polygonIndex] = {
         ...updated[polygonIndex],
         outer: outerPoints,
-        holes: refinedHoles,
         type: detected,
         needsReprocess: false
       };
@@ -3518,56 +3358,6 @@ const ShapeScanner = () => {
       outerPoints = VectorUtils.smooth(outerPoints, polyCurve);
     }
     
-    // Find and process holes
-    const holes = ContourTracer.findHoles(roiMask, labels, mainComponent.label, roiWidth, roiHeight, mainComponent.bbox);
-    const refinedHoles = [];
-    const rawHoles = [];
-    
-    for (const holePixels of holes) {
-      if (holePixels.length < 5) continue;
-      
-      // Find starting point for hole
-      let startHole = holePixels[0];
-      for (const p of holePixels) {
-        if (p.y < startHole.y || (p.y === startHole.y && p.x < startHole.x)) startHole = p;
-      }
-      
-      // Create temporary mask for hole tracing
-      const holeMask = new Uint8Array(roiWidth * roiHeight);
-      holePixels.forEach(p => { holeMask[p.y * roiWidth + p.x] = 1; });
-      
-      const holeBoundary = ContourTracer.traceBoundary4(holeMask, roiWidth, roiHeight, startHole.x, startHole.y, null, null);
-      if (holeBoundary.length < 5) continue;
-      
-      const holeSimplified = ContourTracer.simplifyContour(holeBoundary, polyScan);
-      let holePoints = holeSimplified.map(roiPixelToGlobalMm);
-      
-      // Ensure CW winding for holes
-      if (ContourTracer.signedArea(holePoints) > 0) {
-        holePoints = ContourTracer.reverseContour(holePoints);
-      }
-      if (holePoints.length > 0) {
-        holePoints.push({ ...holePoints[0] });
-      }
-      
-      rawHoles.push([...holePoints]);
-      
-      // Apply refinement
-      if (polySmartRefine) {
-        const holeFit = ShapeFitter.fitCircle(holePoints);
-        if (holeFit) {
-          holePoints = ShapeFitter.generateCircle(holeFit.cx, holeFit.cy, holeFit.r);
-        } else {
-          holePoints = VectorUtils.simplify(holePoints, 0.5);
-          holePoints = VectorUtils.smooth(holePoints, polyCurve);
-        }
-      } else {
-        holePoints = VectorUtils.simplify(holePoints, 0.5);
-        holePoints = VectorUtils.smooth(holePoints, polyCurve);
-      }
-      refinedHoles.push(holePoints);
-    }
-    
     // Update the polygon with new detection results
     setDetectedPolygons(prev => {
       const updated = [...prev];
@@ -3587,9 +3377,7 @@ const ShapeScanner = () => {
       updated[polygonIndex] = {
         ...updated[polygonIndex],
         outer: outerPoints,
-        holes: refinedHoles,
         rawOuter,
-        rawHoles,
         type: detected,
         bbox: { minX, maxX, minY, maxY },
         pixelBbox: newPixelBbox,
@@ -3720,23 +3508,13 @@ const ShapeScanner = () => {
     // Entities section
     dxf += "0\nSECTION\n2\nENTITIES\n";
     
-    // Export all detected polygons with their holes
+    // Export all detected polygons
     if (detectedPolygons.length > 0) {
       detectedPolygons.forEach((poly, polyIdx) => {
         // Export outer contour
         if (poly.outer.length >= 2) {
-          dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Outer\n90\n" + poly.outer.length + "\n70\n1\n";
+          dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "\n90\n" + poly.outer.length + "\n70\n1\n";
           poly.outer.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
-        }
-        
-        // Export holes (only if showHoles is enabled for this polygon)
-        if (poly.settings?.showHoles !== false) {
-          poly.holes.forEach((hole, holeIdx) => {
-            if (hole.length >= 2) {
-              dxf += "0\nLWPOLYLINE\n8\nShape_" + (polyIdx + 1) + "_Hole_" + (holeIdx + 1) + "\n90\n" + hole.length + "\n70\n1\n";
-              hole.forEach(p => { dxf += "10\n" + p.x.toFixed(3) + "\n20\n" + p.y.toFixed(3) + "\n"; });
-            }
-          });
         }
       });
     } else if (processedPath.length >= 2) {
@@ -3791,18 +3569,7 @@ const ShapeScanner = () => {
           const pathData = poly.outer.map((p, i) => 
             `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
           ).join(' ') + ' Z';
-          svg += `  <path id="shape_${polyIdx + 1}_outer" d="${pathData}" fill="none" stroke="#000000" stroke-width="0.1"/>\n`;
-        }
-        // Holes (only if showHoles is enabled for this polygon)
-        if (poly.settings?.showHoles !== false) {
-          poly.holes.forEach((hole, holeIdx) => {
-            if (hole.length >= 2) {
-              const holeData = hole.map((p, i) => 
-                `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(3)} ${(paperHeight - p.y).toFixed(3)}`
-              ).join(' ') + ' Z';
-              svg += `  <path id="shape_${polyIdx + 1}_hole_${holeIdx + 1}" d="${holeData}" fill="none" stroke="#666666" stroke-width="0.1"/>\n`;
-            }
-          });
+          svg += `  <path id="shape_${polyIdx + 1}" d="${pathData}" fill="none" stroke="#000000" stroke-width="0.1"/>\n`;
         }
       });
     } else if (processedPath.length >= 2) {
@@ -4214,7 +3981,7 @@ const ShapeScanner = () => {
                 <p>Mapped: {debugStats.mappedPixels} px</p>
                 <p>Time: {debugStats.processingTime}ms</p>
                 <p>Mode: {viewMode}</p>
-                <p>Shapes: {detectedPolygons.length} | Holes: {detectedPolygons.reduce((a,p)=>a+p.holes.length,0)}</p>
+                <p>Shapes: {detectedPolygons.length}</p>
             </div>
         )}
 
@@ -4523,20 +4290,6 @@ const ShapeScanner = () => {
                                                 vectorEffect="non-scaling-stroke"
                                             />
                                         )}
-                                        {/* Holes */}
-                                        {(poly.settings?.showHoles !== false) && poly.holes.map((hole, holeIdx) => (
-                                            hole.length > 0 && (
-                                                <path 
-                                                    key={`hole-${holeIdx}`}
-                                                    d={`M ${hole.map(p => `${(p.x/paperWidth)*100} ${(1 - p.y/paperHeight)*100}`).join(" L ")} Z`}
-                                                    fill="none" 
-                                                    stroke={viewMode === 'contour' ? '#666666' : '#f59e0b'} 
-                                                    strokeWidth={viewMode === 'contour' ? "1" : "0.8"}
-                                                    strokeDasharray={viewMode === 'contour' ? "none" : "2 1"}
-                                                    vectorEffect="non-scaling-stroke"
-                                                />
-                                            )
-                                        ))}
                                     </g>
                                 ))}
                                 
@@ -4623,11 +4376,6 @@ const ShapeScanner = () => {
                                     <Move size={10} className="opacity-60 mr-1" />
                                     <Check size={12} className="stroke-[3]" /> 
                                     {detectedPolygons.length} Shape{detectedPolygons.length > 1 ? 's' : ''} 
-                                    {detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0) > 0 && (
-                                        <span className="ml-1 text-amber-300">
-                                            + {detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0)} Hole{detectedPolygons.reduce((acc, p) => acc + (p.settings?.showHoles !== false ? p.holes.length : 0), 0) > 1 ? 's' : ''}
-                                        </span>
-                                    )}
                                 </div>
                                 {detectedPolygons.length > 1 && (
                                     <div className="flex gap-1 flex-wrap">
@@ -4982,30 +4730,6 @@ const ShapeScanner = () => {
                                             className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().smartRefine ? 'bg-[var(--accent-emerald)] border-[var(--accent-emerald)] text-white' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
                                         >
                                             <PenTool size={12}/> {getSelectedPolygonSettings().smartRefine ? 'Enabled' : 'Disabled'}
-                                        </button>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[10px] uppercase font-bold theme-text-secondary tracking-wider">
-                                            <span>Show Holes</span>
-                                            <span className="text-amber-400">{getSelectedPolygonSettings().showHoles !== false ? 'ON' : 'OFF'}</span>
-                                        </div>
-                                        <button 
-                                            onClick={() => {
-                                                const newValue = getSelectedPolygonSettings().showHoles === false ? true : false;
-                                                setDetectedPolygons(prev => {
-                                                    const updated = [...prev];
-                                                    if (updated[selectedPolygonIndex]) {
-                                                        updated[selectedPolygonIndex] = {
-                                                            ...updated[selectedPolygonIndex],
-                                                            settings: { ...updated[selectedPolygonIndex].settings, showHoles: newValue }
-                                                        };
-                                                    }
-                                                    return updated;
-                                                });
-                                            }}
-                                            className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 border text-[10px] font-bold uppercase tracking-wider transition-all ${getSelectedPolygonSettings().showHoles !== false ? 'bg-[var(--accent-amber)] border-[var(--accent-amber)] text-black' : 'theme-bg-tertiary theme-border theme-text-secondary'}`}
-                                        >
-                                            <Circle size={12}/> {getSelectedPolygonSettings().showHoles !== false ? 'Visible' : 'Hidden'}
                                         </button>
                                     </div>
                                     <div className="space-y-1.5">

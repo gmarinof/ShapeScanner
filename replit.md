@@ -23,7 +23,7 @@ shape-scanner-app/
 ## Key Features
 - Photo capture/upload with perspective correction
 - Automatic paper corner detection (Otsu thresholding)
-- Multi-polygon detection with hole support
+- Multi-polygon detection (all shapes detected as independent polygons)
 - Per-polygon settings (each shape can have independent slider settings)
 - Shape fitting (circles, polygons)
 - DXF export for CAD software
@@ -45,10 +45,9 @@ git push github main
 
 ## Recent Changes (Dec 2024)
 - Multi-polygon detection with 4-connectivity boundary tracing
-- Hole detection for shapes like washers and frames with proper component ownership
-- DXF export with correct winding direction (CCW for outer contours, CW for holes)
+- DXF export with correct winding direction (CCW for outer contours)
 - Polygon selector UI for switching between detected shapes
-- Separate layers in DXF for each shape and hole
+- Separate layers in DXF for each shape
 
 ### Dec 14, 2024
 - Camera capture using Capacitor Camera.getPhoto() for native platforms
@@ -110,11 +109,6 @@ git push github main
   - Toggle between dark and light interface in Settings menu
   - Theme preference persisted to localStorage
   - Header and main container adapt to theme selection
-- **Per-polygon hole visibility toggle**:
-  - Each shape has a "Show Holes" toggle in Advanced settings
-  - Orange dotted holes can be hidden per-shape without deleting them
-  - Hidden holes are excluded from DXF/SVG exports
-  - Hole count in badge updates to reflect visible holes only
 - **Calibration page system** (complete):
   - Mode selection screen: Quick Scan vs Precision Scan
   - Calibration template generator with corner markers and rulers (SVG)
@@ -134,7 +128,7 @@ git push github main
     - Card: 75.6mm × 44mm
   - **Marker masking**: Corner marker regions are masked during polygon detection in Precision mode
 - **Heatmap Guide**: Comprehensive help panel shown in heatmap view mode explaining:
-  - What the colors mean (bright = object, dark = background)
+  - What the colors mean (bright = uniform/paper, dark = varied/objects - inverted for reflective objects)
   - How to adjust threshold and use invert
   - Visual legend for color interpretation
   - **Heatmap Contrast slider** (50%-300%) to adjust visibility of detection differences
@@ -144,3 +138,13 @@ git push github main
 - **Early polygon initialization**: Polygons are now detected immediately when entering process view
   - Previously only initialized when switching to Contour mode
   - Per-polygon settings now available from the start
+
+### Dec 16, 2024
+- **Removed hole detection**: All detected shapes are now treated as independent polygons
+  - Internal regions (previously holes) are now detected as separate polygon shapes
+  - Simplified DXF/SVG export (no more hole layers)
+  - Removed "Show Holes" toggle from UI
+- **Fixed per-polygon settings persistence on view mode change**: Settings no longer reset when switching between Original/Heatmap/Contour/Processed views
+  - Uses ref tracking to skip polygon re-detection when only view mode changes
+- **Increased L-corner detection tolerance**: Precision scan marker detection now accepts up to 30° (first pass) or 45° (fallback) deviation from perpendicular
+- **Inverted heatmap visualization**: Uniform areas (paper) now appear bright, varied areas (objects) appear dark - better for reflective/multi-colored objects
