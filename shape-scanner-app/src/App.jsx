@@ -3631,22 +3631,31 @@ const ShapeScanner = () => {
     
     // Multi-polygon detection with holes - skip if only viewMode changed and we have existing polygons
     if (!viewModeOnlyChanged || !hasExistingPolygonsWithSettings) {
-        // In precision mode, mask out the corner marker regions
+        // In precision mode, mask out the ruler and marker regions
+        // After homography, the scan area represents the region between AprilTag centers
+        // The rulers are positioned at rulerOffset from the paper edge, which is INSIDE the scan area
         if (scanMode === 'precision') {
           const scanArea = getCalibrationScanArea(calibrationSize);
-          // The markers occupy a margin at each corner
-          // markerMargin is in mm, convert to pixels
-          const marginPx = Math.ceil((scanArea.markerMargin / scanArea.fullWidth) * targetW * 1.2); // 1.2x for safety
           
-          // Mask out corner regions (set to 0 = background)
+          // Calculate ruler position relative to scan area
+          // rulerOffset = tagOffset + tagSize + 3 (from edge)
+          // tagCenter = tagOffset + tagSize/2 (from edge, which is our corner reference)
+          // So ruler is at: rulerOffset - tagCenter = (tagOffset + tagSize + 3) - (tagOffset + tagSize/2) = tagSize/2 + 3
+          const rulerMarginMm = scanArea.markerSize / 2 + 5; // Add 2mm extra safety margin
+          
+          // Convert mm to pixels (scan area dimensions are in mm, target is in pixels)
+          const rulerMarginXPx = Math.ceil((rulerMarginMm / scanArea.width) * targetW);
+          const rulerMarginYPx = Math.ceil((rulerMarginMm / scanArea.height) * targetH);
+          
+          // Mask out edge strips where rulers appear (top and left edges have rulers)
           for (let y = 0; y < targetH; y++) {
             for (let x = 0; x < targetW; x++) {
-              const inTopLeft = x < marginPx && y < marginPx;
-              const inTopRight = x >= targetW - marginPx && y < marginPx;
-              const inBottomLeft = x < marginPx && y >= targetH - marginPx;
-              const inBottomRight = x >= targetW - marginPx && y >= targetH - marginPx;
+              // Top edge strip (horizontal ruler)
+              const inTopStrip = y < rulerMarginYPx;
+              // Left edge strip (vertical ruler) 
+              const inLeftStrip = x < rulerMarginXPx;
               
-              if (inTopLeft || inTopRight || inBottomLeft || inBottomRight) {
+              if (inTopStrip || inLeftStrip) {
                 mask[y * targetW + x] = 0;
               }
             }
