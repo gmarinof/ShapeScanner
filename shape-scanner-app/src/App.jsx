@@ -3,6 +3,169 @@ import { Camera as CameraIcon, Upload, Check, RefreshCcw, Settings, Download, Sc
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { AprilTagFamily } from 'apriltag';
+import tagConfig36h11 from 'apriltag/families/36h11.json';
+
+// AprilTag family for generating markers
+const aprilTagFamily = new AprilTagFamily(tagConfig36h11);
+
+// Generate AprilTag SVG pattern for a given tag ID
+// Returns SVG group element string
+const generateAprilTagSVG = (tagId, x, y, size) => {
+  const pattern = aprilTagFamily.render(tagId);
+  const cellSize = size / pattern.length;
+  let rects = '';
+  
+  for (let row = 0; row < pattern.length; row++) {
+    for (let col = 0; col < pattern[row].length; col++) {
+      const cell = pattern[row][col];
+      if (cell === 'b') {
+        rects += `<rect x="${x + col * cellSize}" y="${y + row * cellSize}" width="${cellSize}" height="${cellSize}" fill="black"/>`;
+      } else if (cell === 'w') {
+        rects += `<rect x="${x + col * cellSize}" y="${y + row * cellSize}" width="${cellSize}" height="${cellSize}" fill="white"/>`;
+      }
+    }
+  }
+  
+  return `<g>${rects}</g>`;
+};
+
+// AprilTag IDs for each corner position
+const APRILTAG_IDS = {
+  tl: 0, // Top-left uses tag ID 0
+  tr: 1, // Top-right uses tag ID 1
+  br: 2, // Bottom-right uses tag ID 2
+  bl: 3  // Bottom-left uses tag ID 3
+};
+
+// AprilTag WASM Detector wrapper class
+// Loads the WASM module and provides detection API
+class AprilTagDetector {
+  constructor() {
+    this._ready = false;
+    this._Module = null;
+    this._init = null;
+    this._detect = null;
+    this._set_img_buffer = null;
+    this._set_detector_options = null;
+    this._loadPromise = null;
+  }
+
+  // Load and initialize the WASM module
+  async load() {
+    if (this._ready) return true;
+    if (this._loadPromise) return this._loadPromise;
+    
+    this._loadPromise = new Promise(async (resolve) => {
+      try {
+        // Dynamically load the WASM module
+        const wasmUrl = '/apriltag/apriltag_wasm.js';
+        
+        // Create a script element to load the WASM loader
+        const script = document.createElement('script');
+        script.src = wasmUrl;
+        
+        script.onload = async () => {
+          // Wait for AprilTagWasm to be available
+          if (typeof window.AprilTagWasm === 'function') {
+            try {
+              const Module = await window.AprilTagWasm();
+              this._Module = Module;
+              
+              // Wrap C functions
+              this._init = Module.cwrap('atagjs_init', 'number', []);
+              this._destroy = Module.cwrap('atagjs_destroy', 'number', []);
+              this._set_detector_options = Module.cwrap('atagjs_set_detector_options', 'number', 
+                ['number', 'number', 'number', 'number', 'number', 'number', 'number']);
+              this._set_img_buffer = Module.cwrap('atagjs_set_img_buffer', 'number', 
+                ['number', 'number', 'number']);
+              this._detect_internal = Module.cwrap('atagjs_detect', 'number', []);
+              
+              // Initialize detector
+              this._init();
+              
+              // Set detector options: decimate=2.0, sigma=0.0, threads=1, refine_edges=1, max_det=0, pose=0, solutions=0
+              this._set_detector_options(2.0, 0.0, 1, 1, 0, 0, 0);
+              
+              this._ready = true;
+              console.log('AprilTag WASM detector initialized');
+              resolve(true);
+            } catch (e) {
+              console.error('Failed to initialize AprilTag WASM:', e);
+              resolve(false);
+            }
+          } else {
+            console.error('AprilTagWasm not found after script load');
+            resolve(false);
+          }
+        };
+        
+        script.onerror = (e) => {
+          console.error('Failed to load AprilTag WASM script:', e);
+          resolve(false);
+        };
+        
+        document.head.appendChild(script);
+      } catch (e) {
+        console.error('AprilTag detector load error:', e);
+        resolve(false);
+      }
+    });
+    
+    return this._loadPromise;
+  }
+
+  // Detect AprilTags in a grayscale image
+  // Returns array of detections with id, center, and corners
+  detect(grayscaleImg, imgWidth, imgHeight) {
+    if (!this._ready) {
+      console.warn('AprilTag detector not ready');
+      return [];
+    }
+    
+    try {
+      // Allocate image buffer
+      const imgBuffer = this._set_img_buffer(imgWidth, imgHeight, imgWidth);
+      if (imgWidth * imgHeight > grayscaleImg.length) {
+        console.error('Image data size mismatch');
+        return [];
+      }
+      
+      // Copy grayscale image to WASM memory
+      this._Module.HEAPU8.set(grayscaleImg, imgBuffer);
+      
+      // Run detection
+      const strJsonPtr = this._detect_internal();
+      
+      // Parse result JSON
+      const strJsonLen = this._Module.getValue(strJsonPtr, 'i32');
+      if (strJsonLen === 0) {
+        return [];
+      }
+      
+      const strJsonStrPtr = this._Module.getValue(strJsonPtr + 4, 'i32');
+      const strJsonView = new Uint8Array(this._Module.HEAP8.buffer, strJsonStrPtr, strJsonLen);
+      let detectionsJson = '';
+      for (let i = 0; i < strJsonLen; i++) {
+        detectionsJson += String.fromCharCode(strJsonView[i]);
+      }
+      
+      const detections = JSON.parse(detectionsJson);
+      console.log(`AprilTag: detected ${detections.length} tags`);
+      return detections;
+    } catch (e) {
+      console.error('AprilTag detection error:', e);
+      return [];
+    }
+  }
+
+  isReady() {
+    return this._ready;
+  }
+}
+
+// Global AprilTag detector instance
+const aprilTagDetector = new AprilTagDetector();
 
 /**
  * MATH HELPERS
@@ -764,120 +927,149 @@ class EdgeDetector {
   // CALIBRATION MARKER DETECTION
   // =====================================================
 
-  // Template metadata: normalized marker positions and expected aspect ratios
-  // Based on actual SVG template: markerSize = min(w,h)*0.08, markerOffset = 5mm
-  // markerThickness = markerSize * 0.15
-  // Inner corner of L at (markerOffset + markerThickness) from edges
+  // Template metadata for AprilTag-based calibration
+  // AprilTag markers are positioned with their centers at known offsets from paper edges
+  // Tag size is 12mm for A4/Letter, 6mm for business card
+  // Marker center positions are normalized (u,v) coordinates where (0,0) is TL, (1,1) is BR
   static TEMPLATE_CONFIGS = {
     letter: {
       // Letter: 215.9 x 279.4 mm
-      // markerSize = 215.9 * 0.08 = 17.27mm, markerThickness = 2.59mm
-      // Inner corners at ~7.6mm from edges = 7.6/215.9 = 0.035 (width), 7.6/279.4 = 0.027 (height)
-      aspectRatio: 200 / 264, // ~0.758
+      // Tag size: 12mm, offset from edge: 8mm (center at 8 + 6 = 14mm from edge)
+      // Scan area between tag centers: 215.9 - 2*14 = 187.9mm x 279.4 - 2*14 = 251.4mm
+      aspectRatio: 187.9 / 251.4, // ~0.747
+      tagSize: 12, // mm
+      tagOffset: 8, // mm from edge to tag corner
       markerPositions: {
-        tl: { u: 0.035, v: 0.027 },
-        tr: { u: 0.965, v: 0.027 },
-        br: { u: 0.965, v: 0.973 },
-        bl: { u: 0.035, v: 0.973 }
+        tl: { u: 14 / 215.9, v: 14 / 279.4 }, // ~0.065, ~0.050
+        tr: { u: 1 - 14 / 215.9, v: 14 / 279.4 },
+        br: { u: 1 - 14 / 215.9, v: 1 - 14 / 279.4 },
+        bl: { u: 14 / 215.9, v: 1 - 14 / 279.4 }
       },
-      markerSearchRadius: 0.08,
+      scanArea: { width: 187.9, height: 251.4 },
     },
     a4: {
       // A4: 210 x 297 mm
-      // markerSize = 210 * 0.08 = 16.8mm, markerThickness = 2.52mm
-      // Inner corners at ~7.5mm from edges = 7.5/210 = 0.036 (width), 7.5/297 = 0.025 (height)
-      aspectRatio: 195 / 282, // ~0.691
+      // Tag size: 12mm, offset from edge: 8mm (center at 14mm from edge)
+      // Scan area between tag centers: 210 - 2*14 = 182mm x 297 - 2*14 = 269mm
+      aspectRatio: 182 / 269, // ~0.677
+      tagSize: 12, // mm
+      tagOffset: 8, // mm
       markerPositions: {
-        tl: { u: 0.036, v: 0.025 },
-        tr: { u: 0.964, v: 0.025 },
-        br: { u: 0.964, v: 0.975 },
-        bl: { u: 0.036, v: 0.975 }
+        tl: { u: 14 / 210, v: 14 / 297 }, // ~0.067, ~0.047
+        tr: { u: 1 - 14 / 210, v: 14 / 297 },
+        br: { u: 1 - 14 / 210, v: 1 - 14 / 297 },
+        bl: { u: 14 / 210, v: 1 - 14 / 297 }
       },
-      markerSearchRadius: 0.08,
+      scanArea: { width: 182, height: 269 },
     },
     card: {
       // Card: 85.6 x 54 mm
-      // markerSize = 54 * 0.08 = 4.32mm, markerThickness = 0.65mm
-      // Inner corners at ~5.65mm from edges = 5.65/85.6 = 0.066 (width), 5.65/54 = 0.105 (height)
-      aspectRatio: 75.6 / 44, // ~1.718 (landscape)
+      // Tag size: 6mm, offset from edge: 4mm (center at 7mm from edge)
+      // Scan area between tag centers: 85.6 - 2*7 = 71.6mm x 54 - 2*7 = 40mm
+      aspectRatio: 71.6 / 40, // ~1.79 (landscape)
+      tagSize: 6, // mm
+      tagOffset: 4, // mm
       markerPositions: {
-        tl: { u: 0.066, v: 0.105 },
-        tr: { u: 0.934, v: 0.105 },
-        br: { u: 0.934, v: 0.895 },
-        bl: { u: 0.066, v: 0.895 }
+        tl: { u: 7 / 85.6, v: 7 / 54 }, // ~0.082, ~0.130
+        tr: { u: 1 - 7 / 85.6, v: 7 / 54 },
+        br: { u: 1 - 7 / 85.6, v: 1 - 7 / 54 },
+        bl: { u: 7 / 85.6, v: 1 - 7 / 54 }
       },
-      markerSearchRadius: 0.12,
+      scanArea: { width: 71.6, height: 40 },
     }
   };
 
-  // Detect calibration markers using geometry-constrained approach
-  // 1. First detect rough paper outline using edge detection
-  // 2. Use known template dimensions to compute expected marker positions
-  // 3. Search in small ROIs centered on expected positions
-  static detectCalibrationMarkers(srcData, width, height, paperSize = 'letter') {
-    console.log('Attempting geometry-constrained calibration marker detection...');
+  // Detect calibration markers using AprilTag detection
+  // Uses the AprilTag WASM detector to find tag36h11 markers (IDs 0-3)
+  // Returns array of 4 corner points [TL, TR, BR, BL] based on tag centers
+  // This is now an async function that waits for the detector to load
+  static async detectCalibrationMarkersAsync(srcData, width, height, paperSize = 'letter') {
+    console.log('Attempting AprilTag-based calibration marker detection...');
     console.log('Paper size:', paperSize);
+    
+    // Wait for AprilTag detector to load (with timeout)
+    if (!aprilTagDetector.isReady()) {
+      console.log('AprilTag detector not ready, attempting to load...');
+      const loaded = await Promise.race([
+        aprilTagDetector.load(),
+        new Promise(resolve => setTimeout(() => resolve(false), 5000)) // 5 second timeout
+      ]);
+      
+      if (!loaded) {
+        console.log('AprilTag detector failed to load within timeout, falling back to edge detection');
+        return this.detectCalibrationMarkersFallback(srcData, width, height, paperSize);
+      }
+    }
     
     // Convert to grayscale
     const gray = this.toGrayscale(srcData, width, height, null);
-    const blurred = this.gaussianBlur(gray, width, height);
     
-    // Step 1: Detect rough paper outline to get initial corner estimates
-    const roughCorners = this.detectRoughPaperOutline(srcData, width, height);
+    // Run AprilTag detection
+    const detections = aprilTagDetector.detect(gray, width, height);
     
-    let constrainedMarkers = [null, null, null, null]; // TL, TR, BR, BL
-    let broadMarkers = [null, null, null, null];
-    
-    if (roughCorners) {
-      console.log('Found rough paper outline, using geometry-constrained search');
-      // Try geometry-constrained detection first
-      const constrainedResult = this.detectMarkersWithGeometryConstraint(
-        blurred, width, height, roughCorners, paperSize
-      );
-      if (constrainedResult) {
-        return constrainedResult;
-      }
-      console.log('Geometry-constrained detection failed, trying fallback...');
-      
-      // Store partial results for potential merging
-      constrainedMarkers = this.detectMarkersWithGeometryConstraintPartial(
-        blurred, width, height, roughCorners, paperSize
-      );
-    } else {
-      console.log('Could not detect paper outline, using broad search');
+    if (detections.length === 0) {
+      console.log('No AprilTags detected, falling back to edge detection');
+      return this.detectCalibrationMarkersFallback(srcData, width, height, paperSize);
     }
     
-    // Try broad quadrant search
-    broadMarkers = this.detectMarkersWithBroadSearchPartial(blurred, width, height, paperSize);
+    console.log(`Found ${detections.length} AprilTags:`, detections.map(d => `ID ${d.id}`).join(', '));
     
-    // Try to merge results from both approaches
-    const mergedMarkers = [];
-    const positions = ['tl', 'tr', 'br', 'bl'];
-    for (let i = 0; i < 4; i++) {
-      const marker = constrainedMarkers[i] || broadMarkers[i];
-      if (marker) {
-        mergedMarkers.push(marker);
-        console.log(`Merged marker ${positions[i]}: (${marker.x.toFixed(0)}, ${marker.y.toFixed(0)}) from ${constrainedMarkers[i] ? 'constrained' : 'broad'} search`);
-      }
+    // Map tag IDs to corner positions
+    // Expected: ID 0 = TL, ID 1 = TR, ID 2 = BR, ID 3 = BL
+    const cornerMap = {};
+    for (const det of detections) {
+      if (det.id === APRILTAG_IDS.tl) cornerMap.tl = det;
+      else if (det.id === APRILTAG_IDS.tr) cornerMap.tr = det;
+      else if (det.id === APRILTAG_IDS.br) cornerMap.br = det;
+      else if (det.id === APRILTAG_IDS.bl) cornerMap.bl = det;
     }
     
-    if (mergedMarkers.length !== 4) {
-      console.log(`Merged search only found ${mergedMarkers.length}/4 markers`);
-      return null;
+    // Check if we found all 4 corner markers
+    const foundPositions = ['tl', 'tr', 'br', 'bl'].filter(p => cornerMap[p]);
+    console.log(`Found corner markers: ${foundPositions.join(', ')}`);
+    
+    if (foundPositions.length !== 4) {
+      console.log(`Only found ${foundPositions.length}/4 AprilTag markers, falling back to edge detection`);
+      return this.detectCalibrationMarkersFallback(srcData, width, height, paperSize);
     }
     
-    // Sort corners by geometry
-    const sortedCorners = this.sortCornersClockwise(mergedMarkers);
+    // Extract center points for each corner (AprilTag centers are our reference points)
+    const corners = [
+      { x: cornerMap.tl.center.x, y: cornerMap.tl.center.y }, // TL
+      { x: cornerMap.tr.center.x, y: cornerMap.tr.center.y }, // TR
+      { x: cornerMap.br.center.x, y: cornerMap.br.center.y }, // BR
+      { x: cornerMap.bl.center.x, y: cornerMap.bl.center.y }  // BL
+    ];
+    
+    console.log('AprilTag corners detected:', corners.map((c, i) => 
+      `${['TL','TR','BR','BL'][i]}:(${c.x.toFixed(0)},${c.y.toFixed(0)})`
+    ).join(', '));
     
     // Validate with aspect ratio
     const config = this.TEMPLATE_CONFIGS[paperSize] || this.TEMPLATE_CONFIGS.letter;
-    if (!this.validateMarkersWithAspectRatio(sortedCorners, config.aspectRatio)) {
-      console.log('Merged markers failed aspect ratio validation');
+    if (!this.validateMarkersWithAspectRatio(corners, config.aspectRatio)) {
+      console.log('AprilTag markers failed aspect ratio validation');
       return null;
     }
     
-    console.log('Merged search found all 4 markers!');
-    return sortedCorners;
+    console.log('AprilTag detection successful!');
+    return corners;
+  }
+
+  // Fallback detection using edge-based paper corner detection (for Quick Scan mode or when AprilTag fails)
+  static detectCalibrationMarkersFallback(srcData, width, height, paperSize = 'letter') {
+    console.log('Using fallback edge-based corner detection...');
+    
+    // Try edge detection to find paper corners
+    const corners = this.detectPaperCorners(srcData, width, height, { r: 255, g: 255, b: 255 });
+    if (corners && corners.length === 4) {
+      const sortedCorners = this.sortCornersClockwise(corners);
+      console.log('Found paper corners via edge detection');
+      return sortedCorners;
+    }
+    
+    console.log('Fallback edge detection also failed');
+    return null;
   }
 
   // Sort corners into TL, TR, BR, BL order based on centroid and polar angle
@@ -2157,28 +2349,29 @@ const PAPER_SIZES = {
   card: { width: 85.6, height: 54, name: 'Business Card' }
 };
 
-// Actual scan area dimensions (measured between inner corners of L-markers)
+// Actual scan area dimensions (measured between AprilTag centers)
 // These are the precise distances between detection points
 const CALIBRATION_SCAN_AREAS = {
-  a4: { width: 195, height: 282 },      // A4: 210x297, markers ~7.5mm from edges
-  letter: { width: 200, height: 264 },  // Letter: 215.9x279.4
-  card: { width: 75.6, height: 44 }     // Card: 85.6x54
+  a4: { width: 182, height: 269 },      // A4: 210x297, tag centers at 14mm from edges
+  letter: { width: 187.9, height: 251.4 },  // Letter: 215.9x279.4
+  card: { width: 71.6, height: 40 }     // Card: 85.6x54
 };
 
 const getCalibrationScanArea = (size = 'a4') => {
   const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
   const scanArea = CALIBRATION_SCAN_AREAS[size] || CALIBRATION_SCAN_AREAS.a4;
   
-  // Same settings as in generateCalibrationSVG for masking calculation
-  const markerSize = Math.min(paper.width, paper.height) * 0.08;
-  const markerOffset = 5;
-  const markerMargin = markerOffset + markerSize;
+  // AprilTag settings matching generateCalibrationSVG
+  const isCard = size === 'card';
+  const tagSize = isCard ? 6 : 12; // mm
+  const tagOffset = isCard ? 4 : 8; // mm from edge to tag corner
+  const markerMargin = tagOffset + tagSize; // Region covered by AprilTag markers
   
   return { 
     width: scanArea.width, 
     height: scanArea.height,
     markerMargin,
-    markerSize,
+    markerSize: tagSize,
     fullWidth: paper.width,
     fullHeight: paper.height
   };
@@ -2188,32 +2381,17 @@ const generateCalibrationSVG = (size = 'a4') => {
   const paper = PAPER_SIZES[size] || PAPER_SIZES.a4;
   const { width, height } = paper;
   
-  // Marker settings
-  const markerSize = Math.min(width, height) * 0.08; // 8% of smaller dimension
-  const markerThickness = markerSize * 0.15;
-  const markerOffset = 5; // Distance from edge in mm
+  // AprilTag settings based on paper size
+  const isCard = size === 'card';
+  const tagSize = isCard ? 6 : 12; // mm
+  const tagOffset = isCard ? 4 : 8; // mm from edge to tag corner
   
   // Ruler settings
   const tickInterval = 5; // 5mm intervals
   const majorTickInterval = 10; // Major tick every 10mm
   const minorTickLength = 2;
   const majorTickLength = 4;
-  const rulerOffset = markerOffset + markerSize + 3;
-  
-  // Generate corner marker SVG path (L-shaped bracket with inner pattern)
-  const cornerMarker = (x, y, rotation) => {
-    const inner = markerSize * 0.4; // Inner square pattern size
-    return `
-      <g transform="translate(${x}, ${y}) rotate(${rotation})">
-        <!-- L-shaped bracket -->
-        <path d="M0,0 L${markerSize},0 L${markerSize},${markerThickness} L${markerThickness},${markerThickness} L${markerThickness},${markerSize} L0,${markerSize} Z" fill="black"/>
-        <!-- Inner detection pattern -->
-        <rect x="${markerThickness + 2}" y="${markerThickness + 2}" width="${inner}" height="${inner}" fill="black"/>
-        <rect x="${markerThickness + 2 + inner + 1}" y="${markerThickness + 2}" width="${inner * 0.5}" height="${inner}" fill="black"/>
-        <rect x="${markerThickness + 2}" y="${markerThickness + 2 + inner + 1}" width="${inner}" height="${inner * 0.5}" fill="black"/>
-      </g>
-    `;
-  };
+  const rulerOffset = tagOffset + tagSize + 3;
 
   // Generate ruler ticks along an edge
   const rulerTicks = (startX, startY, length, isHorizontal) => {
@@ -2256,11 +2434,18 @@ const generateCalibrationSVG = (size = 'a4') => {
   <!-- Border -->
   <rect x="3" y="3" width="${width - 6}" height="${height - 6}" fill="none" stroke="black" stroke-width="0.5"/>
   
-  <!-- Corner Markers -->
-  ${cornerMarker(markerOffset, markerOffset, 0)}
-  ${cornerMarker(width - markerOffset, markerOffset, 90)}
-  ${cornerMarker(width - markerOffset, height - markerOffset, 180)}
-  ${cornerMarker(markerOffset, height - markerOffset, 270)}
+  <!-- AprilTag Corner Markers (tag36h11 family, IDs 0-3) -->
+  <!-- Top-left: Tag ID 0 -->
+  ${generateAprilTagSVG(APRILTAG_IDS.tl, tagOffset, tagOffset, tagSize)}
+  
+  <!-- Top-right: Tag ID 1 -->
+  ${generateAprilTagSVG(APRILTAG_IDS.tr, width - tagOffset - tagSize, tagOffset, tagSize)}
+  
+  <!-- Bottom-right: Tag ID 2 -->
+  ${generateAprilTagSVG(APRILTAG_IDS.br, width - tagOffset - tagSize, height - tagOffset - tagSize, tagSize)}
+  
+  <!-- Bottom-left: Tag ID 3 -->
+  ${generateAprilTagSVG(APRILTAG_IDS.bl, tagOffset, height - tagOffset - tagSize, tagSize)}
   
   <!-- Top Ruler -->
   <line x1="${rulerOffset}" y1="${rulerOffset}" x2="${width - rulerOffset}" y2="${rulerOffset}" stroke="black" stroke-width="0.3"/>
@@ -2274,10 +2459,11 @@ const generateCalibrationSVG = (size = 'a4') => {
   <text x="${width / 2}" y="${height / 2 - 5}" font-size="4" text-anchor="middle" fill="#666">ShapeScanner Calibration Page</text>
   <text x="${width / 2}" y="${height / 2 + 1}" font-size="3" text-anchor="middle" fill="#888">${paper.name} (${width} × ${height} mm)</text>
   <text x="${width / 2}" y="${height / 2 + 6}" font-size="2" text-anchor="middle" fill="#aaa">Print at 100% scale - Do not resize</text>
+  <text x="${width / 2}" y="${height / 2 + 10}" font-size="1.5" text-anchor="middle" fill="#bbb">AprilTag markers (tag36h11)</text>
   
   <!-- Center crosshair -->
-  <line x1="${width / 2 - 10}" y1="${height / 2 + 15}" x2="${width / 2 + 10}" y2="${height / 2 + 15}" stroke="#ccc" stroke-width="0.3"/>
-  <line x1="${width / 2}" y1="${height / 2 + 5}" x2="${width / 2}" y2="${height / 2 + 25}" stroke="#ccc" stroke-width="0.3"/>
+  <line x1="${width / 2 - 10}" y1="${height / 2 + 18}" x2="${width / 2 + 10}" y2="${height / 2 + 18}" stroke="#ccc" stroke-width="0.3"/>
+  <line x1="${width / 2}" y1="${height / 2 + 8}" x2="${width / 2}" y2="${height / 2 + 28}" stroke="#ccc" stroke-width="0.3"/>
   
 </svg>`;
 
@@ -2961,7 +3147,7 @@ const ShapeScanner = () => {
   }, [corners, step, imageSrc, imgDims, view, calMonochrome, calContrast]);
 
   // --- AUTO DETECT (uses edge detection with Canny + contour fitting) ---
-  const autoDetectCorners = useCallback(() => {
+  const autoDetectCorners = useCallback(async () => {
     if (!sourcePixelData.current) return;
     const width = imgDims.w; const height = imgDims.h; const srcData = sourcePixelData.current;
     
@@ -2983,12 +3169,12 @@ const ShapeScanner = () => {
     
     console.log('Auto-detect running with contrast:', calContrast, 'paper color:', paperColor, 'scanMode:', scanMode);
     
-    // If in precision mode, ONLY use marker detection (no fallback to paper edge)
+    // If in precision mode, ONLY use AprilTag marker detection (no fallback to paper edge)
     if (scanMode === 'precision') {
-      console.log('Precision mode: detecting calibration markers only...');
+      console.log('Precision mode: detecting AprilTag calibration markers...');
       // Use RAW image data for marker detection (not contrast-adjusted) for better accuracy
-      // Pass calibrationSize to use geometry-constrained detection
-      const markerCorners = EdgeDetector.detectCalibrationMarkers(srcData, width, height, calibrationSize);
+      // Use async detection which waits for WASM detector to load
+      const markerCorners = await EdgeDetector.detectCalibrationMarkersAsync(srcData, width, height, calibrationSize);
       
       if (markerCorners && markerCorners.length === 4) {
         console.log('Calibration markers detected successfully!');
@@ -2996,8 +3182,8 @@ const ShapeScanner = () => {
         return;
       }
       // In precision mode, don't fall back - user must use calibration markers
-      console.log('Marker detection failed - please ensure all 4 L-shaped corner markers are visible');
-      alert('Could not detect calibration markers. Please ensure:\n\n1. All 4 L-shaped corner markers are visible\n2. Good lighting without shadows on markers\n3. Camera is positioned to see entire calibration page');
+      console.log('Marker detection failed - please ensure all 4 AprilTag corner markers are visible');
+      alert('Could not detect calibration markers. Please ensure:\n\n1. All 4 AprilTag corner markers are visible\n2. Good lighting without shadows on markers\n3. Camera is positioned to see entire calibration page\n4. Print the calibration template at 100% scale');
       return;
     }
     
@@ -4161,10 +4347,18 @@ const ShapeScanner = () => {
 
             {/* Precision Scan Option */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 setScanMode('precision');
                 setShowModeSelect(false);
                 setShowCalibrationPrint(true);
+                // Pre-load AprilTag detector for precision mode
+                console.log('Loading AprilTag detector for Precision Scan mode...');
+                const loaded = await aprilTagDetector.load();
+                if (loaded) {
+                  console.log('AprilTag detector ready for Precision Scan');
+                } else {
+                  console.warn('AprilTag detector failed to load, will use fallback detection');
+                }
               }}
               className="w-full p-5 rounded-2xl theme-bg-secondary border-2 border-transparent hover:border-[var(--accent-emerald)] transition-all group text-left"
             >

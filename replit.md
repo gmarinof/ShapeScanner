@@ -140,26 +140,26 @@ git push github main
   - Per-polygon settings now available from the start
 
 ### Dec 16, 2024
-- **Orientation-agnostic L-shape detection**: Marker detection no longer requires L-shapes to be in specific orientations
-  - Works with rotated papers and non-optimal camera angles
-  - Finds ANY valid L-shape in each search region
-  - Uses geometric sorting (polar angle from centroid) to determine TL/TR/BR/BL after finding all 4 markers
-  - Removed strict quadrant-matching requirement that was causing failures
 - **Removed hole detection**: All detected shapes are now treated as independent polygons
   - Internal regions (previously holes) are now detected as separate polygon shapes
   - Simplified DXF/SVG export (no more hole layers)
   - Removed "Show Holes" toggle from UI
 - **Fixed per-polygon settings persistence on view mode change**: Settings no longer reset when switching between Original/Heatmap/Contour/Processed views
   - Uses ref tracking to skip polygon re-detection when only view mode changes
-- **Increased L-corner detection tolerance**: Precision scan marker detection now accepts up to 30° (first pass) or 45° (fallback) deviation from perpendicular
 - **Inverted heatmap visualization**: Uniform areas (paper) now appear bright, varied areas (objects) appear dark - better for reflective/multi-colored objects
-- **Geometry-constrained marker detection for Precision Scan**:
-  - First detects rough paper outline using edge detection or threshold
-  - Uses known template dimensions to compute exact expected marker positions
-  - TEMPLATE_CONFIGS stores exact normalized (u,v) coordinates for each marker per paper size
-  - Bilinear interpolation maps expected positions into skewed/rotated photos
-  - sortCornersClockwise() ensures consistent TL→TR→BR→BL corner ordering
-  - Searches constrained ROIs (8% of paper size) around expected positions
-  - Multi-threshold approach (30%, 40%, 50%, 60%) for robustness
-  - Validates detected markers using known aspect ratio (30% tolerance)
-  - Falls back to broad quadrant search with aspect ratio validation if constrained search fails
+- **MAJOR: Replaced L-shape markers with AprilTag fiducial markers** for Precision Scan mode:
+  - AprilTag markers are standardized computer vision fiducials designed for robust detection
+  - Works reliably with phone cameras in non-optimal conditions (rotation, blur, lighting variations, perspective)
+  - Uses tag36h11 family with tag IDs 0-3 for TL, TR, BR, BL corners
+  - `apriltag` npm package generates marker patterns for calibration template SVG
+  - `apriltag-js-standalone` WASM detector (in `/public/apriltag/`) performs detection in browser
+  - AprilTag returns precise corner coordinates automatically (no heuristic skeleton/perpendicularity analysis)
+  - Falls back to edge-based paper detection if AprilTag detector fails
+  - **Updated calibration template**: 
+    - AprilTag markers at each corner (12mm for A4/Letter, 6mm for business card)
+    - Updated scan area dimensions based on tag center-to-center distances
+    - Letter: 187.9mm × 251.4mm, A4: 182mm × 269mm, Card: 71.6mm × 40mm
+  - AprilTag detector loaded asynchronously when entering Precision Scan mode
+  - `AprilTagDetector` class wraps WASM module with detect(grayscale, width, height) API
+  - `APRILTAG_IDS` constant maps corner positions to tag IDs
+  - `generateAprilTagSVG()` function renders tag patterns as SVG rects
