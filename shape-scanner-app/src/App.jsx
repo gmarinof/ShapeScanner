@@ -1802,15 +1802,21 @@ class EdgeDetector {
     const total = pixels.length;
     const ratios = [tlCount/total, trCount/total, blCount/total, brCount/total];
     const minRatio = Math.min(...ratios);
-    const sparseCount = ratios.filter(r => r < 0.15).length;
-    const denseCount = ratios.filter(r => r > 0.15).length;
+    const maxRatio = Math.max(...ratios);
+    
+    // More relaxed thresholds for L-shape validation
+    // Sparse = < 0.18 (was 0.15), Dense = > 0.20 (was 0.15)
+    const sparseCount = ratios.filter(r => r < 0.18).length;
+    const denseCount = ratios.filter(r => r > 0.20).length;
     
     // Log quadrant analysis for debugging
-    console.log(`L-shape ${position}: ratios=[${ratios.map(r => r.toFixed(2)).join(',')}], sparse=${sparseCount}, dense=${denseCount}`);
+    console.log(`L-shape ${position}: ratios=[${ratios.map(r => r.toFixed(2)).join(',')}], sparse=${sparseCount}, dense=${denseCount}, minRatio=${minRatio.toFixed(2)}`);
     
-    // L-shape must have exactly 1 sparse quadrant and at least 2 dense
-    // REMOVED: strict orientation check - now orientation-agnostic
-    if (sparseCount < 1 || denseCount < 2 || minRatio > 0.15) return null;
+    // L-shape must have at least 1 sparse quadrant and at least 2 dense
+    // Also check there's meaningful difference between min and max (L-shape characteristic)
+    const hasLShapeDistribution = (maxRatio - minRatio) > 0.15;
+    if ((sparseCount < 1 || denseCount < 2) && !hasLShapeDistribution) return null;
+    if (minRatio > 0.22) return null; // At least one quadrant should be relatively sparse
     
     // Find which quadrant is sparse (for intersection validation only)
     const sparseQuadrant = 
