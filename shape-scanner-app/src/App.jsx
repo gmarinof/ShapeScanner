@@ -764,69 +764,386 @@ class EdgeDetector {
   // CALIBRATION MARKER DETECTION
   // =====================================================
 
-  // Detect calibration markers in image corners
-  // Returns 4 corner points if all markers found, null otherwise
-  static detectCalibrationMarkers(srcData, width, height) {
-    console.log('Attempting calibration marker detection...');
+  // Template metadata: normalized marker positions and expected aspect ratios
+  // Marker positions are normalized relative to paper size (0-1 range)
+  // Based on actual template design with L-markers at corners
+  static TEMPLATE_CONFIGS = {
+    letter: {
+      // Scan area between inner corners: 200mm x 264mm
+      aspectRatio: 200 / 264, // ~0.758
+      // L-marker leg length is ~10mm, inner corner offset from page edge ~5mm
+      markerOffset: 0.02, // 2% inset from edge where marker inner corner should be
+      markerSearchRadius: 0.08, // Search 8% radius around expected position
+    },
+    a4: {
+      aspectRatio: 195 / 282, // ~0.691
+      markerOffset: 0.02,
+      markerSearchRadius: 0.08,
+    },
+    card: {
+      aspectRatio: 75.6 / 44, // ~1.718 (landscape)
+      markerOffset: 0.03,
+      markerSearchRadius: 0.10,
+    }
+  };
+
+  // Detect calibration markers using geometry-constrained approach
+  // 1. First detect rough paper outline using edge detection
+  // 2. Use known template dimensions to compute expected marker positions
+  // 3. Search in small ROIs centered on expected positions
+  static detectCalibrationMarkers(srcData, width, height, paperSize = 'letter') {
+    console.log('Attempting geometry-constrained calibration marker detection...');
+    console.log('Paper size:', paperSize);
     
     // Convert to grayscale
     const gray = this.toGrayscale(srcData, width, height, null);
-    
-    // Apply Gaussian blur for noise reduction
     const blurred = this.gaussianBlur(gray, width, height);
     
-    // For each corner quadrant, compute adaptive threshold and search
-    const searchSize = Math.min(width, height) * 0.25; // Search 25% of image in each corner
+    // Step 1: Detect rough paper outline to get initial corner estimates
+    const roughCorners = this.detectRoughPaperOutline(srcData, width, height);
     
-    const corners = [
-      this.findMarkerInQuadrantAdaptive(blurred, width, height, 0, 0, searchSize, 'tl'),
-      this.findMarkerInQuadrantAdaptive(blurred, width, height, width - searchSize, 0, searchSize, 'tr'),
-      this.findMarkerInQuadrantAdaptive(blurred, width, height, width - searchSize, height - searchSize, searchSize, 'br'),
-      this.findMarkerInQuadrantAdaptive(blurred, width, height, 0, height - searchSize, searchSize, 'bl')
+    if (roughCorners) {
+      console.log('Found rough paper outline, using geometry-constrained search');
+      // Try geometry-constrained detection first
+      const constrainedResult = this.detectMarkersWithGeometryConstraint(
+        blurred, width, height, roughCorners, paperSize
+      );
+      if (constrainedResult) {
+        return constrainedResult;
+      }
+      console.log('Geometry-constrained detection failed, trying fallback...');
+    } else {
+      console.log('Could not detect paper outline, using broad search');
+    }
+    
+    // Fallback: Traditional broad quadrant search (but with known aspect ratio validation)
+    return this.detectMarkersWithBroadSearch(blurred, width, height, paperSize);
+  }
+
+  // Sort corners into TL, TR, BR, BL order based on centroid and polar angle
+  static sortCornersClockwise(corners) {
+    if (!corners || corners.length !== 4) return corners;
+    
+    // Compute centroid
+    const cx = corners.reduce((s, c) => s + c.x, 0) / 4;
+    const cy = corners.reduce((s, c) => s + c.y, 0) / 4;
+    
+    // Compute angle from centroid for each corner
+    const withAngles = corners.map(c => ({
+      ...c,
+      angle: Math.atan2(c.y - cy, c.x - cx)
+    }));
+    
+    // Sort by angle (counterclockwise from right)
+    withAngles.sort((a, b) => a.angle - b.angle);
+    
+    // Find top-left (smallest x + y sum among the sorted)
+    let tlIndex = 0;
+    let minSum = withAngles[0].x + withAngles[0].y;
+    for (let i = 1; i < 4; i++) {
+      const sum = withAngles[i].x + withAngles[i].y;
+      if (sum < minSum) {
+        minSum = sum;
+        tlIndex = i;
+      }
+    }
+    
+    // Rotate array so TL is first, then TR, BR, BL (clockwise order)
+    const sorted = [];
+    for (let i = 0; i < 4; i++) {
+      sorted.push(withAngles[(tlIndex + i) % 4]);
+    }
+    
+    // Return without the angle property
+    return sorted.map(c => ({ x: c.x, y: c.y }));
+  }
+
+  // Detect rough paper outline using edge detection
+  static detectRoughPaperOutline(srcData, width, height) {
+    console.log('Detecting rough paper outline...');
+    
+    // Use the existing edge detection to find paper corners
+    const corners = this.detectPaperCorners(srcData, width, height, { r: 255, g: 255, b: 255 });
+    if (corners && corners.length === 4) {
+      // Sort corners into consistent TL→TR→BR→BL order
+      const sortedCorners = this.sortCornersClockwise(corners);
+      console.log('Found rough paper outline via edge detection');
+      return sortedCorners;
+    }
+    
+    // Fallback: try to find the paper using color-based detection
+    // Look for the largest bright rectangle
+    const gray = this.toGrayscale(srcData, width, height, null);
+    
+    // Simple Otsu threshold to find paper (usually brightest region)
+    let sum = 0;
+    for (let i = 0; i < gray.length; i++) sum += gray[i];
+    const mean = sum / gray.length;
+    
+    // Find pixels above mean (likely paper)
+    const paperMask = new Uint8Array(width * height);
+    let paperPixels = 0;
+    for (let i = 0; i < gray.length; i++) {
+      if (gray[i] > mean) {
+        paperMask[i] = 1;
+        paperPixels++;
+      }
+    }
+    
+    // If paper area is reasonable (20-90% of image), estimate corners from bounding box
+    const paperRatio = paperPixels / (width * height);
+    if (paperRatio > 0.2 && paperRatio < 0.9) {
+      let minX = width, maxX = 0, minY = height, maxY = 0;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (paperMask[y * width + x] === 1) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      console.log(`Estimated paper bounds from threshold: (${minX},${minY}) to (${maxX},${maxY})`);
+      return [
+        { x: minX, y: minY }, // TL
+        { x: maxX, y: minY }, // TR
+        { x: maxX, y: maxY }, // BR
+        { x: minX, y: maxY }  // BL
+      ];
+    }
+    
+    return null;
+  }
+
+  // Bilinear interpolation within a quadrilateral
+  // Maps normalized coordinates (u, v) in [0,1] to image coordinates
+  // Corners: [TL, TR, BR, BL] where u=0 is left, u=1 is right, v=0 is top, v=1 is bottom
+  static bilinearInterpolate(corners, u, v) {
+    const [tl, tr, br, bl] = corners;
+    // Interpolate along top and bottom edges
+    const topX = tl.x + u * (tr.x - tl.x);
+    const topY = tl.y + u * (tr.y - tl.y);
+    const bottomX = bl.x + u * (br.x - bl.x);
+    const bottomY = bl.y + u * (br.y - bl.y);
+    // Interpolate vertically
+    return {
+      x: topX + v * (bottomX - topX),
+      y: topY + v * (bottomY - topY)
+    };
+  }
+
+  // Geometry-constrained marker detection
+  // Uses rough paper outline + known template dimensions to pinpoint marker locations
+  static detectMarkersWithGeometryConstraint(gray, width, height, roughCorners, paperSize) {
+    const config = this.TEMPLATE_CONFIGS[paperSize] || this.TEMPLATE_CONFIGS.letter;
+    
+    // Compute rough paper dimensions from detected corners
+    const tlToTr = Math.sqrt(Math.pow(roughCorners[1].x - roughCorners[0].x, 2) + Math.pow(roughCorners[1].y - roughCorners[0].y, 2));
+    const trToBr = Math.sqrt(Math.pow(roughCorners[2].x - roughCorners[1].x, 2) + Math.pow(roughCorners[2].y - roughCorners[1].y, 2));
+    
+    // Estimate paper dimensions in pixels
+    const paperWidthPx = tlToTr;
+    const paperHeightPx = trToBr;
+    
+    console.log(`Estimated paper size: ${paperWidthPx.toFixed(0)} x ${paperHeightPx.toFixed(0)} px`);
+    
+    // Compute expected marker search radius based on paper size
+    const searchRadius = Math.min(paperWidthPx, paperHeightPx) * config.markerSearchRadius;
+    console.log(`Marker search radius: ${searchRadius.toFixed(0)} px`);
+    
+    // Use bilinear interpolation to find expected marker positions
+    // Markers are at normalized positions (markerOffset from edges)
+    const offset = config.markerOffset;
+    const expectedPositions = [
+      { // TL: near top-left corner
+        ...this.bilinearInterpolate(roughCorners, offset, offset),
+        position: 'tl'
+      },
+      { // TR: near top-right corner
+        ...this.bilinearInterpolate(roughCorners, 1 - offset, offset),
+        position: 'tr'
+      },
+      { // BR: near bottom-right corner
+        ...this.bilinearInterpolate(roughCorners, 1 - offset, 1 - offset),
+        position: 'br'
+      },
+      { // BL: near bottom-left corner
+        ...this.bilinearInterpolate(roughCorners, offset, 1 - offset),
+        position: 'bl'
+      }
     ];
     
-    console.log('Marker detection results:', corners);
+    console.log('Expected marker positions (bilinear):', expectedPositions.map(p => `${p.position}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(', '));
     
-    // Check if all 4 markers were found
-    if (!corners.every(c => c !== null)) {
-      console.log('Calibration marker detection failed - not all markers found');
+    // Search for markers in constrained ROIs around expected positions
+    const foundCorners = [];
+    for (const expected of expectedPositions) {
+      const marker = this.findMarkerInConstrainedROI(
+        gray, width, height,
+        expected.x, expected.y,
+        searchRadius,
+        expected.position
+      );
+      
+      if (marker) {
+        foundCorners.push(marker);
+        console.log(`Found marker at ${expected.position}: (${marker.x.toFixed(0)}, ${marker.y.toFixed(0)})`);
+      } else {
+        console.log(`Could not find marker at ${expected.position}`);
+      }
+    }
+    
+    // Need all 4 markers
+    if (foundCorners.length !== 4) {
+      console.log(`Only found ${foundCorners.length}/4 markers with geometry constraint`);
       return null;
     }
     
-    // Validate the detected corners form a reasonable quadrilateral
-    const area = this.polygonArea(corners);
-    const minArea = width * height * 0.15; // At least 15% of image
-    const maxArea = width * height * 0.95; // At most 95% of image
+    // Validate using known aspect ratio
+    if (!this.validateMarkersWithAspectRatio(foundCorners, config.aspectRatio)) {
+      console.log('Markers failed aspect ratio validation');
+      return null;
+    }
     
-    console.log('Marker corners validation - area:', area, 'minArea:', minArea, 'maxArea:', maxArea);
+    console.log('All 4 markers found and validated with geometry constraint!');
+    return foundCorners;
+  }
+
+  // Find marker in a constrained ROI around expected position
+  static findMarkerInConstrainedROI(gray, imgWidth, imgHeight, centerX, centerY, radius, position) {
+    const minX = Math.max(0, Math.floor(centerX - radius));
+    const minY = Math.max(0, Math.floor(centerY - radius));
+    const maxX = Math.min(imgWidth, Math.floor(centerX + radius));
+    const maxY = Math.min(imgHeight, Math.floor(centerY + radius));
+    
+    const roiWidth = maxX - minX;
+    const roiHeight = maxY - minY;
+    
+    console.log(`Searching constrained ROI for ${position}: (${minX},${minY}) to (${maxX},${maxY}), size=${roiWidth}x${roiHeight}`);
+    
+    // Compute local statistics for adaptive threshold
+    let localMin = 255, localMax = 0, sum = 0, count = 0;
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        const val = gray[y * imgWidth + x];
+        if (val < localMin) localMin = val;
+        if (val > localMax) localMax = val;
+        sum += val;
+        count++;
+      }
+    }
+    
+    const contrast = localMax - localMin;
+    if (contrast < 30) {
+      console.log(`ROI ${position}: low contrast (${contrast})`);
+      return null;
+    }
+    
+    // Try multiple threshold levels for robustness
+    const thresholdLevels = [0.3, 0.4, 0.5, 0.6];
+    
+    for (const level of thresholdLevels) {
+      const threshold = localMin + contrast * level;
+      
+      // Create binary mask
+      const binary = new Uint8Array(imgWidth * imgHeight);
+      for (let y = minY; y < maxY; y++) {
+        for (let x = minX; x < maxX; x++) {
+          const idx = y * imgWidth + x;
+          binary[idx] = gray[idx] < threshold ? 1 : 0;
+        }
+      }
+      
+      // Clean with morphological operations
+      const cleaned = this.morphologicalClean(binary, imgWidth, imgHeight, minX, minY, maxX, maxY);
+      
+      // Try to find marker in this ROI
+      const marker = this.findMarkerInQuadrant(cleaned, imgWidth, imgHeight, minX, minY, roiWidth, position);
+      if (marker) {
+        return marker;
+      }
+    }
+    
+    return null;
+  }
+
+  // Validate markers using known aspect ratio
+  static validateMarkersWithAspectRatio(corners, expectedRatio) {
+    // TL-TR = width, TL-BL = height
+    const widthTop = Math.sqrt(Math.pow(corners[1].x - corners[0].x, 2) + Math.pow(corners[1].y - corners[0].y, 2));
+    const widthBottom = Math.sqrt(Math.pow(corners[2].x - corners[3].x, 2) + Math.pow(corners[2].y - corners[3].y, 2));
+    const heightLeft = Math.sqrt(Math.pow(corners[3].x - corners[0].x, 2) + Math.pow(corners[3].y - corners[0].y, 2));
+    const heightRight = Math.sqrt(Math.pow(corners[2].x - corners[1].x, 2) + Math.pow(corners[2].y - corners[1].y, 2));
+    
+    const avgWidth = (widthTop + widthBottom) / 2;
+    const avgHeight = (heightLeft + heightRight) / 2;
+    const detectedRatio = avgWidth / avgHeight;
+    
+    console.log(`Detected aspect ratio: ${detectedRatio.toFixed(3)}, expected: ${expectedRatio.toFixed(3)}`);
+    
+    // Allow 30% tolerance for perspective distortion
+    const ratioDiff = Math.abs(detectedRatio - expectedRatio) / expectedRatio;
+    if (ratioDiff > 0.3) {
+      console.log(`Aspect ratio difference too large: ${(ratioDiff * 100).toFixed(1)}%`);
+      return false;
+    }
+    
+    // Also check that opposing sides are similar length (parallelogram check)
+    const widthDiff = Math.abs(widthTop - widthBottom) / Math.max(widthTop, widthBottom);
+    const heightDiff = Math.abs(heightLeft - heightRight) / Math.max(heightLeft, heightRight);
+    
+    if (widthDiff > 0.4 || heightDiff > 0.4) {
+      console.log(`Opposing sides too different: widthDiff=${(widthDiff*100).toFixed(1)}%, heightDiff=${(heightDiff*100).toFixed(1)}%`);
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Fallback: Broad quadrant search with aspect ratio validation
+  static detectMarkersWithBroadSearch(gray, width, height, paperSize) {
+    console.log('Using broad quadrant search...');
+    const config = this.TEMPLATE_CONFIGS[paperSize] || this.TEMPLATE_CONFIGS.letter;
+    
+    const searchSize = Math.min(width, height) * 0.25;
+    
+    const corners = [
+      this.findMarkerInQuadrantAdaptive(gray, width, height, 0, 0, searchSize, 'tl'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, width - searchSize, 0, searchSize, 'tr'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, width - searchSize, height - searchSize, searchSize, 'br'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, 0, height - searchSize, searchSize, 'bl')
+    ];
+    
+    console.log('Broad search marker results:', corners.map((c, i) => c ? `${['tl','tr','br','bl'][i]}:found` : `${['tl','tr','br','bl'][i]}:null`).join(', '));
+    
+    if (!corners.every(c => c !== null)) {
+      console.log('Broad search failed - not all markers found');
+      return null;
+    }
+    
+    // Validate with aspect ratio
+    if (!this.validateMarkersWithAspectRatio(corners, config.aspectRatio)) {
+      console.log('Broad search markers failed aspect ratio validation');
+      return null;
+    }
+    
+    // Additional validation: area and convexity
+    const area = this.polygonArea(corners);
+    const minArea = width * height * 0.15;
+    const maxArea = width * height * 0.95;
     
     if (area < minArea || area > maxArea) {
-      console.log('Marker corners failed area validation');
+      console.log('Broad search markers failed area validation');
       return null;
     }
     
     if (!this.isConvex(corners)) {
-      console.log('Marker corners not convex');
+      console.log('Broad search markers not convex');
       return null;
     }
     
-    // Check that corners are reasonably spread apart (sides should be similar length)
-    const distances = [];
-    for (let i = 0; i < 4; i++) {
-      const j = (i + 1) % 4;
-      const dx = corners[j].x - corners[i].x;
-      const dy = corners[j].y - corners[i].y;
-      distances.push(Math.sqrt(dx * dx + dy * dy));
-    }
-    const minDist = Math.min(...distances);
-    const maxDist = Math.max(...distances);
-    
-    if (maxDist / minDist > 4) {
-      console.log('Marker corners edge ratio too large:', maxDist / minDist);
-      return null;
-    }
-    
-    console.log('All 4 calibration markers detected and validated successfully!');
+    console.log('Broad search found all 4 markers with validation!');
     return corners;
   }
   
@@ -2559,7 +2876,8 @@ const ShapeScanner = () => {
     if (scanMode === 'precision') {
       console.log('Precision mode: detecting calibration markers only...');
       // Use RAW image data for marker detection (not contrast-adjusted) for better accuracy
-      const markerCorners = EdgeDetector.detectCalibrationMarkers(srcData, width, height);
+      // Pass calibrationSize to use geometry-constrained detection
+      const markerCorners = EdgeDetector.detectCalibrationMarkers(srcData, width, height, calibrationSize);
       
       if (markerCorners && markerCorners.length === 4) {
         console.log('Calibration markers detected successfully!');
@@ -2647,7 +2965,7 @@ const ShapeScanner = () => {
     }
     console.log('Fallback corners found:', tl.val !== Infinity ? 'yes' : 'no');
     if (tl.val !== Infinity) { setCorners([{ x: tl.x, y: tl.y }, { x: tr.x, y: tr.y }, { x: br.x, y: br.y }, { x: bl.x, y: bl.y }]); }
-  }, [imgDims, paperColor, calContrast, scanMode]);
+  }, [imgDims, paperColor, calContrast, scanMode, calibrationSize]);
 
 
   // --- POINT IN POLYGON TEST ---
