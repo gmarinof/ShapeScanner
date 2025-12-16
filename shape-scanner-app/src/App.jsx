@@ -825,6 +825,9 @@ class EdgeDetector {
     // Step 1: Detect rough paper outline to get initial corner estimates
     const roughCorners = this.detectRoughPaperOutline(srcData, width, height);
     
+    let constrainedMarkers = [null, null, null, null]; // TL, TR, BR, BL
+    let broadMarkers = [null, null, null, null];
+    
     if (roughCorners) {
       console.log('Found rough paper outline, using geometry-constrained search');
       // Try geometry-constrained detection first
@@ -835,12 +838,46 @@ class EdgeDetector {
         return constrainedResult;
       }
       console.log('Geometry-constrained detection failed, trying fallback...');
+      
+      // Store partial results for potential merging
+      constrainedMarkers = this.detectMarkersWithGeometryConstraintPartial(
+        blurred, width, height, roughCorners, paperSize
+      );
     } else {
       console.log('Could not detect paper outline, using broad search');
     }
     
-    // Fallback: Traditional broad quadrant search (but with known aspect ratio validation)
-    return this.detectMarkersWithBroadSearch(blurred, width, height, paperSize);
+    // Try broad quadrant search
+    broadMarkers = this.detectMarkersWithBroadSearchPartial(blurred, width, height, paperSize);
+    
+    // Try to merge results from both approaches
+    const mergedMarkers = [];
+    const positions = ['tl', 'tr', 'br', 'bl'];
+    for (let i = 0; i < 4; i++) {
+      const marker = constrainedMarkers[i] || broadMarkers[i];
+      if (marker) {
+        mergedMarkers.push(marker);
+        console.log(`Merged marker ${positions[i]}: (${marker.x.toFixed(0)}, ${marker.y.toFixed(0)}) from ${constrainedMarkers[i] ? 'constrained' : 'broad'} search`);
+      }
+    }
+    
+    if (mergedMarkers.length !== 4) {
+      console.log(`Merged search only found ${mergedMarkers.length}/4 markers`);
+      return null;
+    }
+    
+    // Sort corners by geometry
+    const sortedCorners = this.sortCornersClockwise(mergedMarkers);
+    
+    // Validate with aspect ratio
+    const config = this.TEMPLATE_CONFIGS[paperSize] || this.TEMPLATE_CONFIGS.letter;
+    if (!this.validateMarkersWithAspectRatio(sortedCorners, config.aspectRatio)) {
+      console.log('Merged markers failed aspect ratio validation');
+      return null;
+    }
+    
+    console.log('Merged search found all 4 markers!');
+    return sortedCorners;
   }
 
   // Sort corners into TL, TR, BR, BL order based on centroid and polar angle
@@ -1033,6 +1070,56 @@ class EdgeDetector {
     
     console.log('All 4 markers found and validated with geometry constraint!');
     return sortedCorners;
+  }
+
+  // Partial geometry-constrained detection - returns array of markers found (with nulls for missing)
+  static detectMarkersWithGeometryConstraintPartial(gray, width, height, roughCorners, paperSize) {
+    const config = this.TEMPLATE_CONFIGS[paperSize] || this.TEMPLATE_CONFIGS.letter;
+    
+    const tlToTr = Math.sqrt(Math.pow(roughCorners[1].x - roughCorners[0].x, 2) + Math.pow(roughCorners[1].y - roughCorners[0].y, 2));
+    const trToBr = Math.sqrt(Math.pow(roughCorners[2].x - roughCorners[1].x, 2) + Math.pow(roughCorners[2].y - roughCorners[1].y, 2));
+    
+    const paperWidthPx = tlToTr;
+    const paperHeightPx = trToBr;
+    const searchRadius = Math.min(paperWidthPx, paperHeightPx) * config.markerSearchRadius;
+    
+    const positions = config.markerPositions;
+    const expectedPositions = [
+      { ...this.bilinearInterpolate(roughCorners, positions.tl.u, positions.tl.v), position: 'tl' },
+      { ...this.bilinearInterpolate(roughCorners, positions.tr.u, positions.tr.v), position: 'tr' },
+      { ...this.bilinearInterpolate(roughCorners, positions.br.u, positions.br.v), position: 'br' },
+      { ...this.bilinearInterpolate(roughCorners, positions.bl.u, positions.bl.v), position: 'bl' }
+    ];
+    
+    const markers = [null, null, null, null];
+    for (let i = 0; i < expectedPositions.length; i++) {
+      const expected = expectedPositions[i];
+      const marker = this.findMarkerInConstrainedROI(
+        gray, width, height,
+        expected.x, expected.y,
+        searchRadius,
+        expected.position
+      );
+      if (marker) {
+        markers[i] = marker;
+      }
+    }
+    
+    return markers;
+  }
+
+  // Partial broad search - returns array of markers found (with nulls for missing)
+  static detectMarkersWithBroadSearchPartial(gray, width, height, paperSize) {
+    const searchSize = Math.min(width, height) * 0.25;
+    
+    const markers = [
+      this.findMarkerInQuadrantAdaptive(gray, width, height, 0, 0, searchSize, 'tl'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, width - searchSize, 0, searchSize, 'tr'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, width - searchSize, height - searchSize, searchSize, 'br'),
+      this.findMarkerInQuadrantAdaptive(gray, width, height, 0, height - searchSize, searchSize, 'bl')
+    ];
+    
+    return markers;
   }
 
   // Find marker in a constrained ROI around expected position
