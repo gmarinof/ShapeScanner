@@ -2862,6 +2862,8 @@ const ShapeScanner = () => {
   const [processView, setProcessView] = useState({ x: 0, y: 0, scale: 1 });
   const [isProcessPanning, setIsProcessPanning] = useState(false);
   const [lastProcessPos, setLastProcessPos] = useState({ x: 0, y: 0 });
+  const [lastPinchDist, setLastPinchDist] = useState(null);
+  const [lastPinchCenter, setLastPinchCenter] = useState(null);
   
   // Draggable badge state
   const [badgePosition, setBadgePosition] = useState({ x: null, y: 16 }); // null x means right-aligned
@@ -3401,6 +3403,76 @@ const ShapeScanner = () => {
 
   const resetProcessView = () => {
     setProcessView({ x: 0, y: 0, scale: 1 });
+  };
+
+  // --- PROCESS VIEW TOUCH HANDLERS (pinch-to-zoom) ---
+  const getTouchDistance = (touches) => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getTouchCenter = (touches, rect) => {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+      y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+    };
+  };
+
+  const handleProcessTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setLastPinchDist(getTouchDistance(e.touches));
+      setLastPinchCenter(getTouchCenter(e.touches, rect));
+    } else if (e.touches.length === 1) {
+      // Single touch - start panning
+      setIsProcessPanning(true);
+      setLastProcessPos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    }
+  };
+
+  const handleProcessTouchMove = (e) => {
+    if (e.touches.length === 2 && lastPinchDist !== null) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const newDist = getTouchDistance(e.touches);
+      const newCenter = getTouchCenter(e.touches, rect);
+      
+      // Calculate scale change
+      const scaleFactor = newDist / lastPinchDist;
+      const newScale = Math.max(0.5, Math.min(5, processView.scale * scaleFactor));
+      
+      // Zoom centered on pinch point
+      const scaleChange = newScale / processView.scale;
+      setProcessView(v => ({
+        scale: newScale,
+        x: newCenter.x - (newCenter.x - v.x) * scaleChange + (newCenter.x - lastPinchCenter.x),
+        y: newCenter.y - (newCenter.y - v.y) * scaleChange + (newCenter.y - lastPinchCenter.y)
+      }));
+      
+      setLastPinchDist(newDist);
+      setLastPinchCenter(newCenter);
+    } else if (e.touches.length === 1 && isProcessPanning) {
+      // Single touch - continue panning
+      const touch = e.touches[0];
+      setProcessView(v => ({
+        ...v,
+        x: v.x + touch.clientX - lastProcessPos.x,
+        y: v.y + touch.clientY - lastProcessPos.y
+      }));
+      setLastProcessPos({ x: touch.clientX, y: touch.clientY });
+    }
+  };
+
+  const handleProcessTouchEnd = (e) => {
+    if (e.touches.length < 2) {
+      setLastPinchDist(null);
+      setLastPinchCenter(null);
+    }
+    if (e.touches.length === 0) {
+      setIsProcessPanning(false);
+    }
   };
 
   // --- DRAGGABLE BADGE HANDLERS ---
@@ -4856,6 +4928,9 @@ const ShapeScanner = () => {
                 <div 
                     className="flex-1 w-full relative flex items-center justify-center overflow-hidden p-2"
                     onWheel={handleProcessViewWheel}
+                    onTouchStart={handleProcessTouchStart}
+                    onTouchMove={handleProcessTouchMove}
+                    onTouchEnd={handleProcessTouchEnd}
                 >
                     <div 
                         className={`relative border theme-border shadow-2xl transition-colors duration-300 ${isPicking ? 'cursor-crosshair ring-2 ring-amber-500/50' : ''} ${isProcessPanning ? 'cursor-grabbing' : ''}`}
