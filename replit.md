@@ -148,3 +148,13 @@ git push github main
   - Uses ref tracking to skip polygon re-detection when only view mode changes
 - **Increased L-corner detection tolerance**: Precision scan marker detection now accepts up to 30° (first pass) or 45° (fallback) deviation from perpendicular
 - **Inverted heatmap visualization**: Uniform areas (paper) now appear bright, varied areas (objects) appear dark - better for reflective/multi-colored objects
+- **Geometry-constrained marker detection for Precision Scan**:
+  - First detects rough paper outline using edge detection or threshold
+  - Uses known template dimensions to compute exact expected marker positions
+  - TEMPLATE_CONFIGS stores exact normalized (u,v) coordinates for each marker per paper size
+  - Bilinear interpolation maps expected positions into skewed/rotated photos
+  - sortCornersClockwise() ensures consistent TL→TR→BR→BL corner ordering
+  - Searches constrained ROIs (8% of paper size) around expected positions
+  - Multi-threshold approach (30%, 40%, 50%, 60%) for robustness
+  - Validates detected markers using known aspect ratio (30% tolerance)
+  - Falls back to broad quadrant search with aspect ratio validation if constrained search fails

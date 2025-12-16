@@ -765,25 +765,48 @@ class EdgeDetector {
   // =====================================================
 
   // Template metadata: normalized marker positions and expected aspect ratios
-  // Marker positions are normalized relative to paper size (0-1 range)
-  // Based on actual template design with L-markers at corners
+  // Based on actual SVG template: markerSize = min(w,h)*0.08, markerOffset = 5mm
+  // markerThickness = markerSize * 0.15
+  // Inner corner of L at (markerOffset + markerThickness) from edges
   static TEMPLATE_CONFIGS = {
     letter: {
-      // Scan area between inner corners: 200mm x 264mm
+      // Letter: 215.9 x 279.4 mm
+      // markerSize = 215.9 * 0.08 = 17.27mm, markerThickness = 2.59mm
+      // Inner corners at ~7.6mm from edges = 7.6/215.9 = 0.035 (width), 7.6/279.4 = 0.027 (height)
       aspectRatio: 200 / 264, // ~0.758
-      // L-marker leg length is ~10mm, inner corner offset from page edge ~5mm
-      markerOffset: 0.02, // 2% inset from edge where marker inner corner should be
-      markerSearchRadius: 0.08, // Search 8% radius around expected position
+      markerPositions: {
+        tl: { u: 0.035, v: 0.027 },
+        tr: { u: 0.965, v: 0.027 },
+        br: { u: 0.965, v: 0.973 },
+        bl: { u: 0.035, v: 0.973 }
+      },
+      markerSearchRadius: 0.08,
     },
     a4: {
+      // A4: 210 x 297 mm
+      // markerSize = 210 * 0.08 = 16.8mm, markerThickness = 2.52mm
+      // Inner corners at ~7.5mm from edges = 7.5/210 = 0.036 (width), 7.5/297 = 0.025 (height)
       aspectRatio: 195 / 282, // ~0.691
-      markerOffset: 0.02,
+      markerPositions: {
+        tl: { u: 0.036, v: 0.025 },
+        tr: { u: 0.964, v: 0.025 },
+        br: { u: 0.964, v: 0.975 },
+        bl: { u: 0.036, v: 0.975 }
+      },
       markerSearchRadius: 0.08,
     },
     card: {
+      // Card: 85.6 x 54 mm
+      // markerSize = 54 * 0.08 = 4.32mm, markerThickness = 0.65mm
+      // Inner corners at ~5.65mm from edges = 5.65/85.6 = 0.066 (width), 5.65/54 = 0.105 (height)
       aspectRatio: 75.6 / 44, // ~1.718 (landscape)
-      markerOffset: 0.03,
-      markerSearchRadius: 0.10,
+      markerPositions: {
+        tl: { u: 0.066, v: 0.105 },
+        tr: { u: 0.934, v: 0.105 },
+        br: { u: 0.934, v: 0.895 },
+        bl: { u: 0.066, v: 0.895 }
+      },
+      markerSearchRadius: 0.12,
     }
   };
 
@@ -952,29 +975,28 @@ class EdgeDetector {
     const searchRadius = Math.min(paperWidthPx, paperHeightPx) * config.markerSearchRadius;
     console.log(`Marker search radius: ${searchRadius.toFixed(0)} px`);
     
-    // Use bilinear interpolation to find expected marker positions
-    // Markers are at normalized positions (markerOffset from edges)
-    const offset = config.markerOffset;
+    // Use bilinear interpolation with exact marker positions from template
+    const positions = config.markerPositions;
     const expectedPositions = [
-      { // TL: near top-left corner
-        ...this.bilinearInterpolate(roughCorners, offset, offset),
+      { // TL: exact position from template
+        ...this.bilinearInterpolate(roughCorners, positions.tl.u, positions.tl.v),
         position: 'tl'
       },
-      { // TR: near top-right corner
-        ...this.bilinearInterpolate(roughCorners, 1 - offset, offset),
+      { // TR: exact position from template
+        ...this.bilinearInterpolate(roughCorners, positions.tr.u, positions.tr.v),
         position: 'tr'
       },
-      { // BR: near bottom-right corner
-        ...this.bilinearInterpolate(roughCorners, 1 - offset, 1 - offset),
+      { // BR: exact position from template
+        ...this.bilinearInterpolate(roughCorners, positions.br.u, positions.br.v),
         position: 'br'
       },
-      { // BL: near bottom-left corner
-        ...this.bilinearInterpolate(roughCorners, offset, 1 - offset),
+      { // BL: exact position from template
+        ...this.bilinearInterpolate(roughCorners, positions.bl.u, positions.bl.v),
         position: 'bl'
       }
     ];
     
-    console.log('Expected marker positions (bilinear):', expectedPositions.map(p => `${p.position}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(', '));
+    console.log('Expected marker positions (from template):', expectedPositions.map(p => `${p.position}:(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(', '));
     
     // Search for markers in constrained ROIs around expected positions
     const foundCorners = [];
