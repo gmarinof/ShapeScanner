@@ -4543,29 +4543,44 @@ const ShapeScanner = () => {
           {/* Action Buttons */}
           <div className="w-full max-w-sm space-y-3">
             <button
-              onClick={() => {
+              onClick={async () => {
                 const svg = generateCalibrationSVG(calibrationSize);
                 const filename = `shapescanner-calibration-${calibrationSize}.svg`;
                 
-                // Download the SVG file
-                const blob = new Blob([svg], { type: 'image/svg+xml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                
-                // Cleanup after a short delay
-                setTimeout(() => {
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }, 100);
+                if (Capacitor.isNativePlatform()) {
+                  // Native app: save to Documents folder
+                  try {
+                    await Filesystem.requestPermissions();
+                    await Filesystem.writeFile({
+                      path: filename,
+                      data: svg,
+                      directory: Directory.Documents,
+                      encoding: Encoding.UTF8,
+                    });
+                    alert(`Template saved to Documents folder:\n${filename}\n\nOpen it with any PDF/image viewer app to print.`);
+                  } catch (error) {
+                    console.error('Error saving template:', error);
+                    alert('Error saving file. Please check storage permissions.');
+                  }
+                } else {
+                  // Browser: download the file
+                  const blob = new Blob([svg], { type: 'image/svg+xml' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = filename;
+                  a.style.display = 'none';
+                  document.body.appendChild(a);
+                  a.click();
+                  setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }, 100);
+                }
               }}
               className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
             >
-              <Download size={20} /> Download Template
+              <Download size={20} /> Save Template
             </button>
             <button
               onClick={() => {
