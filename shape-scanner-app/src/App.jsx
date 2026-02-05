@@ -4545,19 +4545,93 @@ const ShapeScanner = () => {
             <button
               onClick={() => {
                 const svg = generateCalibrationSVG(calibrationSize);
-                const blob = new Blob([svg], { type: 'image/svg+xml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `shapescanner-calibration-${calibrationSize}.svg`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                const paper = PAPER_SIZES[calibrationSize] || PAPER_SIZES.a4;
+                
+                // Create a printable HTML page with the SVG
+                const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShapeScanner Calibration - ${paper.name}</title>
+  <style>
+    @page { size: ${paper.name === 'Letter' ? 'letter' : paper.name === 'A4' ? 'A4' : 'auto'}; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      min-height: 100vh;
+      background: white;
+    }
+    .container {
+      width: ${paper.width}mm;
+      height: ${paper.height}mm;
+    }
+    svg { width: 100%; height: 100%; }
+    @media print {
+      body { background: white; }
+      .no-print { display: none !important; }
+    }
+    .print-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 16px 32px;
+      background: #10b981;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .print-btn:active { transform: scale(0.95); }
+    .instructions {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: center;
+      max-width: 90%;
+    }
+  </style>
+</head>
+<body>
+  <div class="instructions no-print">Print at 100% scale (no fit-to-page)</div>
+  <div class="container">${svg}</div>
+  <button class="print-btn no-print" onclick="window.print()">Print Template</button>
+</body>
+</html>`;
+                
+                // Open in new window/tab for printing
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                  printWindow.document.write(printHtml);
+                  printWindow.document.close();
+                } else {
+                  // Fallback: download as file if popup blocked
+                  const blob = new Blob([svg], { type: 'image/svg+xml' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `shapescanner-calibration-${calibrationSize}.svg`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }
               }}
               className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
             >
-              <Download size={20} /> Download Template
+              <Printer size={20} /> Open & Print Template
             </button>
             <button
               onClick={() => {
