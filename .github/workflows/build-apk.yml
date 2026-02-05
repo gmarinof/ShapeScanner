@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK & AAB
 
 on:
   push:
@@ -51,9 +51,31 @@ jobs:
       working-directory: ./shape-scanner-app/android
       run: ./gradlew assembleDebug
       
-    - name: Upload APK
+    - name: Build Release AAB (unsigned)
+      working-directory: ./shape-scanner-app/android
+      run: ./gradlew bundleRelease
+
+    - name: Build Release APK (unsigned)
+      working-directory: ./shape-scanner-app/android
+      run: ./gradlew assembleRelease
+      
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: shapescanner-debug-apk
         path: shape-scanner-app/android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+
+    - name: Upload Release APK (unsigned)
+      uses: actions/upload-artifact@v4
+      with:
+        name: shapescanner-release-apk
+        path: shape-scanner-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+        retention-days: 30
+
+    - name: Upload Release AAB (unsigned)
+      uses: actions/upload-artifact@v4
+      with:
+        name: shapescanner-release-aab
+        path: shape-scanner-app/android/app/build/outputs/bundle/release/app-release.aab
         retention-days: 30
