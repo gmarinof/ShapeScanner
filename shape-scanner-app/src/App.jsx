@@ -4543,46 +4543,29 @@ const ShapeScanner = () => {
           {/* Action Buttons */}
           <div className="w-full max-w-sm space-y-3">
             <button
-              onClick={async () => {
+              onClick={() => {
                 const svg = generateCalibrationSVG(calibrationSize);
-                const paper = PAPER_SIZES[calibrationSize] || PAPER_SIZES.a4;
                 const filename = `shapescanner-calibration-${calibrationSize}.svg`;
                 
-                // Create SVG blob
+                // Download the SVG file
                 const blob = new Blob([svg], { type: 'image/svg+xml' });
-                const file = new File([blob], filename, { type: 'image/svg+xml' });
-                
-                // Try Web Share API first (works great on mobile - lets user choose any app)
-                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                  try {
-                    await navigator.share({
-                      files: [file],
-                      title: `ShapeScanner Calibration - ${paper.name}`,
-                      text: 'Print at 100% scale (no fit-to-page)'
-                    });
-                    return;
-                  } catch (err) {
-                    if (err.name !== 'AbortError') {
-                      console.log('Share failed, falling back to download:', err);
-                    } else {
-                      return; // User cancelled
-                    }
-                  }
-                }
-                
-                // Fallback: download the file directly
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;
+                a.style.display = 'none';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                
+                // Cleanup after a short delay
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, 100);
               }}
               className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
             >
-              <Download size={20} /> Share / Save Template
+              <Download size={20} /> Download Template
             </button>
             <button
               onClick={() => {
