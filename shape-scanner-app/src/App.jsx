@@ -4545,38 +4545,64 @@ const ShapeScanner = () => {
             <button
               onClick={async () => {
                 const svg = generateCalibrationSVG(calibrationSize);
-                const filename = `shapescanner-calibration-${calibrationSize}.svg`;
+                const paper = PAPER_SIZES[calibrationSize] || PAPER_SIZES.a4;
+                const filename = `shapescanner-calibration-${calibrationSize}.jpg`;
                 
-                if (Capacitor.isNativePlatform()) {
-                  // Native app: save to Documents folder
-                  try {
-                    await Filesystem.requestPermissions();
-                    await Filesystem.writeFile({
-                      path: filename,
-                      data: svg,
-                      directory: Directory.Documents,
-                      encoding: Encoding.UTF8,
-                    });
-                    alert(`Template saved to Documents folder:\n${filename}\n\nOpen it with any PDF/image viewer app to print.`);
-                  } catch (error) {
-                    console.error('Error saving template:', error);
-                    alert('Error saving file. Please check storage permissions.');
+                // Convert SVG to JPG using canvas
+                const dpi = 300; // High quality for printing
+                const canvasWidth = Math.round(paper.width * dpi / 25.4); // mm to pixels at 300 DPI
+                const canvasHeight = Math.round(paper.height * dpi / 25.4);
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // White background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+                
+                // Create image from SVG
+                const img = new Image();
+                const svgBlob = new Blob([svg], { type: 'image/svg+xml' });
+                const svgUrl = URL.createObjectURL(svgBlob);
+                
+                img.onload = async () => {
+                  ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
+                  URL.revokeObjectURL(svgUrl);
+                  
+                  if (Capacitor.isNativePlatform()) {
+                    // Native app: save to Documents folder
+                    try {
+                      await Filesystem.requestPermissions();
+                      const base64Data = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+                      await Filesystem.writeFile({
+                        path: filename,
+                        data: base64Data,
+                        directory: Directory.Documents,
+                      });
+                      alert(`Template saved to Documents folder:\n${filename}\n\nOpen it with any image viewer or print app.`);
+                    } catch (error) {
+                      console.error('Error saving template:', error);
+                      alert('Error saving file. Please check storage permissions.');
+                    }
+                  } else {
+                    // Browser: download the file
+                    const link = document.createElement('a');
+                    link.download = filename;
+                    link.href = canvas.toDataURL('image/jpeg', 0.95);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                   }
-                } else {
-                  // Browser: download the file
-                  const blob = new Blob([svg], { type: 'image/svg+xml' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = filename;
-                  a.style.display = 'none';
-                  document.body.appendChild(a);
-                  a.click();
-                  setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  }, 100);
-                }
+                };
+                
+                img.onerror = () => {
+                  URL.revokeObjectURL(svgUrl);
+                  alert('Error generating template image.');
+                };
+                
+                img.src = svgUrl;
               }}
               className="w-full py-4 rounded-xl bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-hover)] text-white font-bold flex items-center justify-center gap-2 transition-all"
             >
