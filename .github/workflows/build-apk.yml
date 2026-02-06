@@ -111,6 +111,14 @@ jobs:
         path: shape-scanner-app/android/app/build/outputs/bundle/release/app-release.aab
         retention-days: 30
 
+    - name: Upload ProGuard mapping file
+      uses: actions/upload-artifact@v4
+      with:
+        name: shapescanner-mapping
+        path: shape-scanner-app/android/app/build/outputs/mapping/release/mapping.txt
+        retention-days: 30
+        if-no-files-found: ignore
+
     - name: Clean up keystore
       if: always()
       run: rm -f ./shape-scanner-app/android/app/shapescanner-release.keystore
